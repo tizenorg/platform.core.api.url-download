@@ -7,6 +7,7 @@ Group:		TO_BE_FILLED_IN
 License:	TO_BE_FILLED_IN
 URL:		N/A
 Source0:	%{name}-%{version}.tar.gz
+Source1001: packaging/capi-web-url-download.manifest 
 BuildRequires: pkgconfig(capi-base-common)
 BuildRequires: pkgconfig(libdownload-agent)
 BuildRequires: pkgconfig(bundle)
@@ -29,6 +30,7 @@ CAPI for content downloading with web url (developement files)
 %setup -q
 
 %build
+cp %{SOURCE1001} .
 cmake . -DCMAKE_INSTALL_PREFIX="/usr/lib"
 
 make %{?jobs:-j%jobs}
@@ -42,10 +44,12 @@ rm -rf %{buildroot}
 %postun -p /sbin/ldconfig
 
 %files
+%manifest capi-web-url-download.manifest
 %defattr(-,root,root,-)
 /usr/lib/libcapi-web-url-download.so
 
 %files devel
+%manifest capi-web-url-download.manifest
 %defattr(-,root,root,-)
 /usr/lib/libcapi-web-url-download.so
 /usr/lib/pkgconfig/capi-web-url-download.pc
