@@ -19,14 +19,18 @@
 #define __TIZEN_WEB_URL_DOWNLOAD_PRIVATE_H__
 
 #include <bundle.h>
+#ifndef ENABLE_DOWNLOAD_PROVIDER
 #include <download-agent-interface.h>
+#endif
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
+#ifndef ENABLE_DOWNLOAD_PROVIDER
 typedef da_client_cb_t *url_download_agent_h;
+#endif
 
 /**
  * url_download_cb_s
@@ -49,14 +53,25 @@ struct url_download_cb_s {
 };
 
 struct url_download_s {
+#ifndef ENABLE_DOWNLOAD_PROVIDER
 	url_download_agent_h agent;
 	da_handle_t id;
+#else
+	uint id;
+	uint enable_notification;
+	int requestid;
+#endif
 	struct url_download_cb_s callback;
 	url_download_state_e state;
 	char *url;
 	char *destination;
 	bundle *http_header;
 	char *completed_path;
+	char *content_name;
+	char *mime_type;
+	uint file_size;
+	int sockfd;
+	pthread_t callback_thread_pid;
 };
 
 #ifdef __cplusplus

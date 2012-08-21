@@ -74,11 +74,9 @@ static const char* url_download_error_to_string(int error_code)
 	case URL_DOWNLOAD_ERROR_CONNECTION_TIMED_OUT:
 		error_name = "CONNECTION_TIMED_OUT";
 		break;
-
 	case URL_DOWNLOAD_ERROR_FIELD_NOT_FOUND:
 		error_name = "FIELD_NOT_FOUND";
 		break;
-
 	case URL_DOWNLOAD_ERROR_NO_SPACE:
 		error_name = "NO_SPACE";
 		break;
@@ -91,15 +89,14 @@ static const char* url_download_error_to_string(int error_code)
 	case URL_DOWNLOAD_ERROR_SSL_FAILED:
 		error_name = "SSL_FAILED";
 		break;
-
 	case URL_DOWNLOAD_ERROR_INVALID_URL:
 		error_name = "INVALID_URL";
 		break;
-
 	case URL_DOWNLOAD_ERROR_INVALID_DESTINATION:
 		error_name = "INVALID_DESTINATION";
 		break;
-
+	case URL_DOWNLOAD_ERROR_TOO_MANY_DOWNLOADS:
+		error_name = "FULL_OF_MAX_DOWNLOAD_ITEMS";
 	default:
 		error_name = "UNKNOWN";
 		break;
@@ -261,7 +258,8 @@ static url_download_error_e url_download_agent_error(int error)
 
 	case DA_ERR_INVALID_INSTALL_PATH:
 		return URL_DOWNLOAD_ERROR_INVALID_DESTINATION;
-
+	case DA_ERR_ALREADY_MAX_DOWNLOAD:
+		return URL_DOWNLOAD_ERROR_TOO_MANY_DOWNLOADS;
 	default:
 		return URL_DOWNLOAD_ERROR_IO_ERROR;
 	}
@@ -321,7 +319,7 @@ static bool is_available_download_data(url_download_h download)
 	return ret;
 }
 
-static void url_download_agent_state_cb(user_notify_info_t *notify_info, void* user_data)
+static void url_download_agent_state_cb(user_notify_info_t *notify_info, void *user_data)
 {
 	url_download_h download = NULL;
 	url_download_state_e state = -1;
@@ -530,6 +528,9 @@ int url_download_destroy(url_download_h download)
 		free(download->completed_path);
 		download->completed_path = NULL;
 	}
+
+	memset(&(download->callback), 0x00, sizeof(struct url_download_cb_s));
+	download->id = -1;
 
 	url_download_agent_destroy(download->agent);
 
@@ -1153,6 +1154,7 @@ static int url_download_start_download(url_download_h download)
 	}
 	else
 	{
+		download->state = URL_DOWNLOAD_STATE_DOWNLOADING;
 		return URL_DOWNLOAD_ERROR_NONE;
 	}
 }
@@ -1179,6 +1181,11 @@ int url_download_start(url_download_h download)
 	if (download == NULL)
 	{
 		return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_INVALID_PARAMETER, NULL);
+	}
+
+	if (!is_available_download_data(download))
+	{
+		return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_INVALID_PARAMETER, "download item is already destroyed!!!!!!!!");
 	}
 
 	switch (download->state)
@@ -1225,12 +1232,12 @@ int url_download_stop(url_download_h download)
 	{
 		return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_INVALID_PARAMETER, NULL);
 	}
-/*
+
 	if (download->state != URL_DOWNLOAD_STATE_DOWNLOADING)
 	{
 		return url_download_error_invalid_state(__FUNCTION__, download);
 	}
-*/
+
 	if (da_cancel_download(download->id))
 	{
 		return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, "failed to stop the download");

@@ -1,3 +1,26 @@
+capi-web-url-download (0.0.5-0) unstable; urgency=low
+
+  * Git: slp/api/url-download
+  * Tag: capi-web-url-download_0.0.5-0
+
+  * Change to request cancel according to state
+  * Add exception handling code at start function
+  * Add initialize the callback data when destroying
+  * Add error code about max downloading item.
+  * Remove unused variable and modify wrong API name.
+  * Modify a make file to define the list of test case's source code.
+
+ -- Jungki Kwak <jungki.kwak@samsung.com>  Thu, 10 May 2012 10:46:37 +0900
+
+capi-web-url-download (0.0.4-0) unstable; urgency=low
+
+  * Git: slp/api/url-download
+  * Tag: capi-web-url-download_0.0.4-0
+
+  * Add a service operation define for the download manager application.
+
+ -- Jungki Kwak <jungki.kwak@samsung.com>  Fri, 23 Mar 2012 18:02:24 +0900
+
 capi-web-url-download (0.0.3-0) unstable; urgency=low
 
   * Git: slp/api/url-download

@@ -18,6 +18,7 @@
 #define __TIZEN_WEB_URL_DOWNLOAD_H__
 
 #include <tizen.h>
+#include <app.h>
 
 #ifdef __cplusplus
 extern "C"
@@ -59,6 +60,8 @@ typedef enum
 	URL_DOWNLOAD_ERROR_SSL_FAILED = TIZEN_ERROR_WEB_CLASS | 0x23, /**< SSL negotiation failed */
 	URL_DOWNLOAD_ERROR_INVALID_URL = TIZEN_ERROR_WEB_CLASS | 0x24, /**< Invalid URL */
 	URL_DOWNLOAD_ERROR_INVALID_DESTINATION = TIZEN_ERROR_WEB_CLASS | 0x25, /**< Invalid destination */
+	URL_DOWNLOAD_ERROR_TOO_MANY_DOWNLOADS = TIZEN_ERROR_WEB_CLASS | 0x26, /**< Full of available downloading items */
+	URL_DOWNLOAD_ERROR_ALREADY_COMPLETED = TIZEN_ERROR_WEB_CLASS | 0x27, /**< The download is already completed */
 } url_download_error_e;
 
 
@@ -71,6 +74,7 @@ typedef enum
 	URL_DOWNLOAD_STATE_DOWNLOADING, /**< The download is currently running */
 	URL_DOWNLOAD_STATE_PAUSED, /**< The download is waiting to resume or stop */
 	URL_DOWNLOAD_STATE_COMPLETED, /**< The download is completed. */
+	URL_DOWNLOAD_STATE_FAILED, /**< The download failed. */
 } url_download_state_e;
 
 
@@ -78,13 +82,16 @@ typedef enum
  * @brief Called when the download is started.
  *
  * @param [in] download The download handle
+ * @param [in] content_name The content name to display at UI layer
+ * @param [in] mime_type The MIME type string
  * @param [in] user_data The user data passed from url_download_set_started_cb()
  * @pre url_download_start() will cause this callback if you register this callback using url_download_set_started_cb()
  * @see url_download_start()
  * @see url_download_set_started_cb()
  * @see url_download_unset_started_cb()
  */
-typedef void (*url_download_started_cb) (url_download_h download, void *user_data);
+typedef void (*url_download_started_cb) (url_download_h download,
+	const char *content_name, const char *mime_type, void *user_data);
 
 
 /**
@@ -104,13 +111,13 @@ typedef void (*url_download_paused_cb) (url_download_h download, void *user_data
  * @brief Called when the download is completed.
  *
  * @param [in] download The download handle
- * @param [in] path The absolute path to the downloaded file
+ * @param [in] installed_path The absolute path to the downloaded file
  * @param [in] user_data The user data passed from url_download_set_completed_cb()
  * @pre This callback function will be invoked when the download is completed if you register this callback using url_download_set_paused_cb()
  * @see url_download_set_completed_cb()
  * @see url_download_unset_completed_cb()
  */
-typedef void (*url_download_completed_cb) (url_download_h download, const char * path, void *user_data);
+typedef void (*url_download_completed_cb) (url_download_h download, const char *installed_path, void *user_data);
 
 
 /**
@@ -176,6 +183,26 @@ typedef bool (*url_download_http_header_field_cb)(url_download_h download, const
  * @see url_download_destroy()
  */
 int url_download_create(url_download_h *download);
+
+
+/**
+ * @brief Creates a download handle with the given identifier
+ *
+ * @remarks The @a download must be released with url_download_destroy() by you.\n
+ * The g_type_init() should be called when creating a main loop by user side. \n
+ * Because the libsoup, which is http stack library of download module, use gobject internally.
+ * @param [in] id The identifier for the download unique within the application.
+ * @param [out] download A download handle to be newly created on success
+ * @return 0 on success, otherwise a negative error value.
+ * @retval #URL_DOWNLOAD_ERROR_NONE Successful
+ * @retval #URL_DOWNLOAD_ERROR_INVALID_PARAMETER Invalid parameter
+ * @retval #URL_DOWNLOAD_ERROR_OUT_OF_MEMORY Out of memory
+ * @retval #URL_DOWNLOAD_ERROR_IO_ERROR Internal I/O error
+ * @post The download state will be #URL_DOWNLOAD_STATE_READY
+ * @see url_download_create()
+ * @see url_download_destroy()
+ */
+int url_download_create_by_id(int id, url_download_h *download);
 
 
 /**
@@ -258,6 +285,109 @@ int url_download_set_destination(url_download_h download, const char *path);
  * @see url_download_set_destination()
  */
 int url_download_get_destination(url_download_h download, char **path);
+
+
+/**
+ * @brief Sets the name for the downloaded file.
+ *
+ * @details The file will be downloaded to the specified destination as the given file name.
+ * If the file name is not specified, the downloaded file is saved to an auto-generated file name in the destination.
+ *
+ * @remarks This function should be called before downloading (see url_download_start())
+ * @param [in] download The download handle
+ * @param [in] file_name The file name for the downloaded file
+ *  If the @a name is NULL, it clears the previous value.
+ * @return 0 on success, otherwise a negative error value.
+ * @retval #URL_DOWNLOAD_ERROR_NONE Successful
+ * @retval #URL_DOWNLOAD_ERROR_INVALID_PARAMETER Invalid parameter
+ * @retval #URL_DOWNLOAD_ERROR_OUT_OF_MEMORY Out of memory
+ * @retval #URL_DOWNLOAD_ERROR_INVALID_STATE Invalid state
+ * @pre The download state must be #URL_DOWNLOAD_STATE_READY or #URL_DOWNLOAD_STATE_COMPLETED.
+ * @see url_download_get_file_name()
+ */
+int url_download_set_file_name(url_download_h download, const char *file_name);
+
+
+/**
+ * @brief Gets the name for the downloaded file.
+ *
+ * @remarks The @a file_name must be released with free() by you.
+ * @param [in] download The download handle
+ * @param [out] file_name The file name for the downloaded file
+ * @return 0 on success, otherwise a negative error value.
+ * @retval #URL_DOWNLOAD_ERROR_NONE Successful
+ * @retval #URL_DOWNLOAD_ERROR_INVALID_PARAMETER Invalid parameter
+ * @retval #URL_DOWNLOAD_ERROR_OUT_OF_MEMORY Out of memory
+ * @see url_download_set_file_name()
+ */
+int url_download_get_file_name(url_download_h download, char **file_name);
+
+
+/**
+ * @brief Sets the service to launch when the notification for the download is selected from the notification tray.
+ * @details When the notification for the download is selected from the notification tray, the application which is described by the specified service is launched. \n
+ * If you want to launch the current application, use the explicit launch of the @ref CAPI_SERVICE_MODULE API
+ * @remarks If the service is not set, the selected notification will be cleared from both the notification tray and the status bar without any action.
+ * @param[in] download The download handle
+ * @param[in] service The service handle to launch when the notification for the download is selected \n
+ *     If the @a service is NULL, it clears the previous value.
+ * @return 0 on success, otherwise a negative error value.
+ * @retval #URL_DOWNLOAD_ERROR_NONE Successful
+ * @retval #URL_DOWNLOAD_ERROR_INVALID_PARAMETER Invalid parameter
+ * @retval #URL_DOWNLOAD_ERROR_OUT_OF_MEMORY Out of memory
+ * @see url_download_get_notification()
+ * @see service_create()
+ */
+int url_download_set_notification(url_download_h download, service_h service);
+
+/**
+ * @brief Gets the service to launch when the notification for the download is selected from the notification tray
+ * @remarks The @a service must be released with service_destroy() by you.
+ * @param[in] download The download handle
+ * @param[out] service The service handle to launch when the notification is selected
+ * @return 0 on success, otherwise a negative error value.
+ * @retval #URL_DOWNLOAD_ERROR_NONE Successful
+ * @retval #URL_DOWNLOAD_ERROR_INVALID_PARAMETER Invalid parameter
+ * @retval #URL_DOWNLOAD_ERROR_OUT_OF_MEMORY Out of memory
+ * @see url_download_set_notification()
+ */
+int url_download_get_notification(url_download_h download, service_h *service);
+
+
+/**
+ * @brief Gets the absolute path to the downloaded file
+ *
+ * @remarks This function returns #URL_DOWNLOAD_ERROR_INVALID_STATE if the download is not completed. \n
+ * The @a path must be released with free() by you.
+ * @param [in] download The download handle
+ * @param [out] path The absolute path to the downloaded file
+ * @return 0 on success, otherwise a negative error value.
+ * @retval #URL_DOWNLOAD_ERROR_NONE Successful
+ * @retval #URL_DOWNLOAD_ERROR_INVALID_PARAMETER Invalid parameter
+ * @retval #URL_DOWNLOAD_ERROR_OUT_OF_MEMORY Out of memory
+ * @pre The download state must be #URL_DOWNLOAD_STATE_COMPLETED.
+ * @see url_download_set_file_name()
+ * @see url_download_set_destination()
+ */
+int url_download_get_downloaded_file(url_download_h download, char **path);
+
+
+/**
+ * @brief Gets the MIME type of the downloaded file
+ *
+ * @remarks This function returns #URL_DOWNLOAD_ERROR_INVALID_STATE if the download has not been started. \n
+ * The @a mime_type must be released with free() by you.
+ * @param [in] download The download handle
+ * @param [out] mime_type The MIME type of the downloaded file
+ * @return 0 on success, otherwise a negative error value.
+ * @retval #URL_DOWNLOAD_ERROR_NONE Successful
+ * @retval #URL_DOWNLOAD_ERROR_INVALID_PARAMETER Invalid parameter
+ * @retval #URL_DOWNLOAD_ERROR_OUT_OF_MEMORY Out of memory
+ * @see url_download_set_file_name()
+ * @see url_download_set_destination()
+ * @see url_download_get_downloaded_file()
+ */
+int url_download_get_mime(url_download_h download, char **mime_type);
 
 
 /**
@@ -506,6 +636,7 @@ int url_download_unset_progress_cb(url_download_h download);
  *
  * @remarks The URL is the mandatory information to start the download.
  * @param [in] download The download handle
+ * @param [out] id The identifier for the download unique within the application.
  * @return 0 on success, otherwise a negative error value.
  * @retval #URL_DOWNLOAD_ERROR_NONE Successful
  * @retval #URL_DOWNLOAD_ERROR_INVALID_PARAMETER Invalid parameter
@@ -523,7 +654,7 @@ int url_download_unset_progress_cb(url_download_h download);
  * @see url_download_unset_started_cb()
  * @see url_download_started_cb()
  */
-int url_download_start(url_download_h download);
+int url_download_start(url_download_h download, int *id);
 
 
 /**
@@ -546,7 +677,6 @@ int url_download_start(url_download_h download);
  * @see url_download_paused_cb()
  */
 int url_download_pause(url_download_h download);
-
 
 /**
  * @brief Stops the download, asynchronously.
@@ -582,7 +712,6 @@ int url_download_stop(url_download_h download);
  * @see #url_download_state_e
  */
 int url_download_get_state(url_download_h download, url_download_state_e *state);
-
 
 /**
  * @brief Retrieves all HTTP header fields to be included with the download
