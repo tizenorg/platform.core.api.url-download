@@ -36,6 +36,47 @@ static int url_download_resume(url_download_h download);
 static int url_download_get_all_http_header_fields(
 		url_download_h download, char ***fields, int *fields_length);
 
+// one event thread model.
+int g_download_maxfd = 0;
+fd_set g_download_socket_readset;
+fd_set g_download_socket_exceptset;
+pthread_t g_download_callback_thread_pid;
+static url_download_h g_download_handle_list[MAX_DOWNLOAD_HANDLE_COUNT] = {0,};
+
+url_download_state_e url_download_provider_state(int state)
+{
+	switch (state) {
+	case DOWNLOAD_STATE_STOPPED:
+		LOGI("DOWNLOAD_STATE_STOPPED");
+		return URL_DOWNLOAD_STATE_READY;
+	case DOWNLOAD_STATE_DOWNLOADING:
+		LOGI("DOWNLOAD_STATE_DOWNLOADING");
+		return URL_DOWNLOAD_STATE_DOWNLOADING;
+	case DOWNLOAD_STATE_PAUSE_REQUESTED:
+		LOGI("DOWNLOAD_STATE_PAUSE_REQUESTED");
+		return URL_DOWNLOAD_STATE_PAUSED;
+	case DOWNLOAD_STATE_PAUSED:
+		LOGI("DOWNLOAD_STATE_PAUSED");
+		return URL_DOWNLOAD_STATE_PAUSED;
+	case DOWNLOAD_STATE_FINISHED:
+		LOGI("DOWNLOAD_STATE_FINISHED");
+		return URL_DOWNLOAD_STATE_COMPLETED;
+	/* For state when downlad is stared */
+	case DOWNLOAD_STATE_READY:
+		LOGI("DOWNLOAD_STATE_READY");
+		return URL_DOWNLOAD_STATE_DOWNLOADING;
+	case DOWNLOAD_STATE_INSTALLING:
+		LOGI("DOWNLOAD_STATE_INSTALLING");
+		return URL_DOWNLOAD_STATE_DOWNLOADING;
+	case DOWNLOAD_STATE_FAILED:
+		LOGI("DOWNLOAD_STATE_FAILED");
+		return URL_DOWNLOAD_STATE_FAILED;
+	default:
+		LOGI("Not exist state [%d]", state);
+		return URL_DOWNLOAD_STATE_READY;
+	}
+}
+
 url_download_error_e url_download_provider_error(int error)
 {
 	switch (error) {
@@ -194,47 +235,93 @@ int ipc_send_download_control(url_download_h download, download_controls type)
 	return type;
 }
 
-// 1 thread / 1 download
-void *run_receive_event_server(void *args)
+void _clear_socket(int sockfd)
 {
-	fd_set rset, exceptset;
+	if (sockfd <= 0)
+		return;
+	FD_CLR(sockfd, &g_download_socket_readset);
+	FD_CLR(sockfd, &g_download_socket_exceptset);
+	shutdown(sockfd, 0);
+	fdatasync(sockfd);
+	close(sockfd);
+	sockfd = 0;
+}
+
+int _connect_download_provider()
+{
+	int sockfd = -1;
+	struct sockaddr_un clientaddr;
+	if ((sockfd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
+		LOGE("[%s]socket system error : %s",__FUNCTION__,strerror(errno));
+		return -1;
+	}
+
+	bzero(&clientaddr, sizeof clientaddr);
+	clientaddr.sun_family = AF_UNIX;
+	strncpy(clientaddr.sun_path, DOWNLOAD_PROVIDER_IPC, strlen(DOWNLOAD_PROVIDER_IPC));
+	if (connect(sockfd, (struct sockaddr*)&clientaddr, sizeof(clientaddr)) < 0) {
+		LOGE("[%s]connect system error : %s",__FUNCTION__,strerror(errno));
+		return -1;
+	}
+	return sockfd;
+}
+
+void _terminate_event_server_if_no_download()
+{
+	// manage event thread
+	int i = 0;
+	for (i = 0; i < MAX_DOWNLOAD_HANDLE_COUNT; i++) {
+		if (g_download_handle_list[i])
+			break;
+	}
+	if (i >= MAX_DOWNLOAD_HANDLE_COUNT) {
+		LOGE("[%s][%d] shutdown event thread",__FUNCTION__, __LINE__);
+		g_download_maxfd = 0;
+	}
+}
+
+void *run_event_server(void *args)
+{
+	LOGE("[%s][%d]",__FUNCTION__, __LINE__);
+	fd_set readset, exceptset;
 	struct timeval timeout;
 	download_state_info stateinfo;
 	download_content_info downloadinfo;
 	downloading_state_info downloadinginfo;
 	download_request_state_info requeststateinfo;
+	int i;
 
-	url_download_h download = (url_download_h)args;
+	LOGE("[%s][%d] g_download_maxfd [%d]",__FUNCTION__, __LINE__, g_download_maxfd);
+	while(g_download_maxfd > 0) {
 
-	while(download && download->sockfd > 0) {
-		FD_ZERO(&rset);
-		FD_ZERO(&exceptset);
-		FD_SET(download->sockfd, &rset);
-		FD_SET(download->sockfd, &exceptset);
-		timeout.tv_sec = 3;
+		readset = g_download_socket_readset;
+		exceptset = g_download_socket_exceptset;
+		timeout.tv_sec = 1;
 
-		if (select((download->sockfd+1), &rset, 0, &exceptset, &timeout) < 0) {
-			url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
-			if (download->callback.stopped) {
-				download->callback.stopped(download,
-				URL_DOWNLOAD_ERROR_IO_ERROR,
-				download->callback.stopped_user_data);
-			}
-			break;
+		if (select((g_download_maxfd+1), &readset, 0, &exceptset, &timeout) < 0) {
+			LOGE("[%s]pthread_create : %s",__FUNCTION__,strerror(errno));
 		}
 
-		if (FD_ISSET(download->sockfd, &rset) > 0) {
-			// read some message from socket.
-			switch(ipc_receive_header(download->sockfd)) {
+		for (i = 0; i < MAX_DOWNLOAD_HANDLE_COUNT; i++) {
+			if (!g_download_handle_list[i])
+				continue;
+			if (g_download_handle_list[i]->sockfd <= 0)
+				continue;
+			if (FD_ISSET(g_download_handle_list[i]->sockfd, &readset) > 0) {
+				url_download_h download = g_download_handle_list[i];
+				switch(ipc_receive_header(download->sockfd)) {
 				case DOWNLOAD_CONTROL_GET_REQUEST_STATE_INFO :
 					LOGI("[%s] DOWNLOAD_CONTROL_GET_REQUEST_STATE_INFO (started pended request)",__FUNCTION__);
-					if (read(download->sockfd, &requeststateinfo, sizeof(download_request_state_info)) < 0) {
+					if (!download->sockfd
+						|| read(download->sockfd, &requeststateinfo,
+							sizeof(download_request_state_info)) < 0) {
 						url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
-						goto URL_DOWNLOAD_EVENT_THREAD_EXIT;
+						_clear_socket(download->sockfd);
+						download->sockfd = 0;
 					}
 					if (requeststateinfo.requestid > 0) {
 						if (requeststateinfo.requestid != download->requestid)
-							goto URL_DOWNLOAD_EVENT_THREAD_EXIT;
+							break;
 						download->requestid = requeststateinfo.requestid;
 						if (requeststateinfo.stateinfo.state == DOWNLOAD_STATE_FAILED) {
 							download->state = URL_DOWNLOAD_STATE_READY;
@@ -243,7 +330,8 @@ void *run_receive_event_server(void *args)
 								url_download_provider_error(stateinfo.err),
 								download->callback.stopped_user_data);
 							}
-							goto URL_DOWNLOAD_EVENT_THREAD_EXIT;
+							_clear_socket(download->sockfd);
+							download->sockfd = 0;
 						} else
 							download->state = URL_DOWNLOAD_STATE_DOWNLOADING;
 					} else {
@@ -254,13 +342,16 @@ void *run_receive_event_server(void *args)
 							url_download_provider_error(stateinfo.err),
 							download->callback.stopped_user_data);
 						}
-						goto URL_DOWNLOAD_EVENT_THREAD_EXIT;
+						_clear_socket(download->sockfd);
+						download->sockfd = 0;
 					}
 					break;
 				case DOWNLOAD_CONTROL_GET_DOWNLOAD_INFO :
-					if (read(download->sockfd, &downloadinfo, sizeof(download_content_info)) < 0) {
+					if (!download->sockfd
+						|| read(download->sockfd, &downloadinfo, sizeof(download_content_info)) < 0) {
 						url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
-						goto URL_DOWNLOAD_EVENT_THREAD_EXIT;
+						_clear_socket(download->sockfd);
+						download->sockfd = 0;
 					}
 					LOGI("[%s] DOWNLOAD_CONTROL_GET_DOWNLOAD_INFO [%d]%",__FUNCTION__, downloadinfo.file_size);
 					download->state = URL_DOWNLOAD_STATE_DOWNLOADING;
@@ -278,9 +369,11 @@ void *run_receive_event_server(void *args)
 					}
 					break;
 				case DOWNLOAD_CONTROL_GET_DOWNLOADING_INFO :
-					if (read(download->sockfd, &downloadinginfo, sizeof(downloading_state_info)) < 0) {
+					if (!download->sockfd
+						|| read(download->sockfd, &downloadinginfo, sizeof(downloading_state_info)) < 0) {
 						url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
-						goto URL_DOWNLOAD_EVENT_THREAD_EXIT;
+						_clear_socket(download->sockfd);
+						download->sockfd = 0;
 					}
 					// call the function by download-callbacks table.
 					LOGI("[%s] DOWNLOAD_CONTROL_GET_DOWNLOADING_INFO [%d]%",__FUNCTION__, downloadinginfo.received_size);
@@ -297,9 +390,11 @@ void *run_receive_event_server(void *args)
 					}
 					break;
 				case DOWNLOAD_CONTROL_GET_STATE_INFO :
-					if (read(download->sockfd, &stateinfo, sizeof(download_state_info)) < 0) {
+					if (!download->sockfd
+						|| read(download->sockfd, &stateinfo, sizeof(download_state_info)) < 0) {
 						url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
-						goto URL_DOWNLOAD_EVENT_THREAD_EXIT;
+						_clear_socket(download->sockfd);
+						download->sockfd = 0;
 					}
 					// call the function by download-callbacks table.
 					LOGI("[%s] DOWNLOAD_CONTROL_GET_STATE_INFO state[%d]",__FUNCTION__, stateinfo.state);
@@ -312,8 +407,8 @@ void *run_receive_event_server(void *args)
 								url_download_provider_error(stateinfo.err),
 								download->callback.stopped_user_data);
 							}
-							// terminate this thread.
-							goto URL_DOWNLOAD_EVENT_THREAD_EXIT;
+							_clear_socket(download->sockfd);
+							download->sockfd = 0;
 							break;
 
 						case DOWNLOAD_STATE_DOWNLOADING:
@@ -336,7 +431,8 @@ void *run_receive_event_server(void *args)
 							if (download->callback.completed)
 								download->callback.completed(download, download->completed_path, download->callback.completed_user_data);
 							// terminate this thread.
-							goto URL_DOWNLOAD_EVENT_THREAD_EXIT;
+							_clear_socket(download->sockfd);
+							download->sockfd = 0;
 							break;
 						case DOWNLOAD_STATE_READY:
 							LOGI("DOWNLOAD_STATE_READY");
@@ -346,23 +442,25 @@ void *run_receive_event_server(void *args)
 							break;
 						case DOWNLOAD_STATE_FAILED:
 							LOGI("DOWNLOAD_STATE_FAILED");
-							download->state = URL_DOWNLOAD_STATE_READY;
+							download->state = URL_DOWNLOAD_STATE_FAILED;
 							if (download->callback.stopped) {
 								download->callback.stopped(download,
 								url_download_provider_error(stateinfo.err),
 								download->callback.stopped_user_data);
 							}
-							goto URL_DOWNLOAD_EVENT_THREAD_EXIT;
+							_clear_socket(download->sockfd);
+							download->sockfd = 0;
 							break;
 						default:
 							url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, "invalid state change event");
 							if (download->callback.stopped) {
-								download->state = URL_DOWNLOAD_STATE_READY;
+								download->state = URL_DOWNLOAD_STATE_FAILED;
 								download->callback.stopped(download,
 								URL_DOWNLOAD_ERROR_IO_ERROR,
 								download->callback.stopped_user_data);
 							}
-							goto URL_DOWNLOAD_EVENT_THREAD_EXIT;
+							_clear_socket(download->sockfd);
+							download->sockfd = 0;
 							break;
 					}
 
@@ -376,32 +474,37 @@ void *run_receive_event_server(void *args)
 						URL_DOWNLOAD_ERROR_IO_ERROR,
 						download->callback.stopped_user_data);
 					}
-					goto URL_DOWNLOAD_EVENT_THREAD_EXIT;
+					_clear_socket(download->sockfd);
+					download->sockfd = 0;
 					break;
+				} // switch
+			} else if (FD_ISSET(g_download_handle_list[i]->sockfd, &exceptset) > 0) {
+				url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, "IO Exception");
+				if (g_download_handle_list[i]->callback.stopped) {
+					g_download_handle_list[i]->state = URL_DOWNLOAD_STATE_READY;
+					g_download_handle_list[i]->callback.stopped(
+					g_download_handle_list[i],
+					URL_DOWNLOAD_ERROR_IO_ERROR,
+					g_download_handle_list[i]->callback.stopped_user_data);
+				}
+				_clear_socket(g_download_handle_list[i]->sockfd);
+				g_download_handle_list[i]->sockfd = 0;
 			}
-		} else if (FD_ISSET(download->sockfd, &exceptset) > 0) {
-			url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, "IO Exception");
-			if (download->callback.stopped) {
-				download->state = URL_DOWNLOAD_STATE_READY;
-				download->callback.stopped(download,
-				URL_DOWNLOAD_ERROR_IO_ERROR,
-				download->callback.stopped_user_data);
-			}
+		} // MAX_CLIENT
+		_terminate_event_server_if_no_download();
+	}
+	return 0;
+}
 
-			break;
-		} else {
-			// wake up by timeout. run extra job.
+int _get_empty_download_slot_index()
+{
+	int i = 0;
+	for (; i < MAX_DOWNLOAD_HANDLE_COUNT; i++) {
+		if (g_download_handle_list[i] == NULL) {
+			return i;
 		}
 	}
-URL_DOWNLOAD_EVENT_THREAD_EXIT :
-	if (download && download->sockfd) {
-		FD_CLR(download->sockfd, &rset);
-		FD_CLR(download->sockfd, &exceptset);
-		if (download->sockfd)
-			close(download->sockfd);
-			download->sockfd = 0;
-	}
-	return NULL;
+	return MAX_DOWNLOAD_HANDLE_COUNT;
 }
 
 // fill the reqeust info.
@@ -411,6 +514,12 @@ int url_download_create(url_download_h *download)
 
 	if (download == NULL)
 		return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_INVALID_PARAMETER, NULL);
+
+	int empty_slot = _get_empty_download_slot_index(g_download_handle_list);
+	if (empty_slot >= MAX_DOWNLOAD_HANDLE_COUNT) {
+		LOGE("[%s][%d] slot is full",__FUNCTION__, __LINE__);
+		return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_TOO_MANY_DOWNLOADS, "Too many created handles");
+	}
 
 	download_new = (url_download_h)calloc(1, sizeof(struct url_download_s));
 	if (download_new == NULL)
@@ -425,7 +534,12 @@ int url_download_create(url_download_h *download)
 
 	download_new->state = URL_DOWNLOAD_STATE_READY;
 	download_new->sockfd = 0;
+	download_new->slot_index = empty_slot;
 	*download = download_new;
+
+	g_download_handle_list[empty_slot] = *download;
+	LOGI("[%s]download[%p] *download[%p] slot[%d]",__FUNCTION__, download, *download, empty_slot);
+
 	return URL_DOWNLOAD_ERROR_NONE;
 }
 
@@ -449,10 +563,14 @@ int url_download_destroy(url_download_h download)
 	if (STATE_IS_RUNNING(download))
 		url_download_stop(download);
 
-	if (download->sockfd)
-		close(download->sockfd);
+	_clear_socket(download->sockfd);
 	download->sockfd = 0;
-//	url_download_stop(download);
+
+	g_download_handle_list[download->slot_index] = NULL;
+	download->slot_index = -1;
+
+	_terminate_event_server_if_no_download();
+
 	if (download->url)
 		free(download->url);
 	if (download->destination)
@@ -465,6 +583,8 @@ int url_download_destroy(url_download_h download)
 		free(download->content_name);
 	if (download->completed_path)
 		free(download->completed_path);
+	if (download->service_data)
+		bundle_free_encoded_rawdata(&(download->service_data));
 	memset(&(download->callback), 0x00, sizeof(struct url_download_cb_s));
 	download->id = -1;
 	free(download);
@@ -473,11 +593,10 @@ int url_download_destroy(url_download_h download)
 	return URL_DOWNLOAD_ERROR_NONE;
 }
 
+extern int service_export_as_bundle(service_h service, bundle **data);
 // connect to download-provider. then send request info.
 int url_download_start(url_download_h download, int *id)
 {
-	struct sockaddr_un clientaddr;
-
 	char **headers = NULL;
 	int header_length = 0;
 
@@ -490,18 +609,16 @@ int url_download_start(url_download_h download, int *id)
 	if (download->state == URL_DOWNLOAD_STATE_PAUSED)
 		return url_download_resume(download);
 
-	if (download->sockfd)
-		close(download->sockfd);
+	_clear_socket(download->sockfd);
+
 	if ((download->sockfd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
 		LOGE("[%s]socket system error : %s",__FUNCTION__,strerror(errno));
 		return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
 	}
 
-	bzero(&clientaddr, sizeof clientaddr);
-	clientaddr.sun_family = AF_UNIX;
-	strcpy(clientaddr.sun_path, DOWNLOAD_PROVIDER_IPC);
-	if (connect(download->sockfd, (struct sockaddr*)&clientaddr, sizeof(clientaddr)) < 0) {
-		LOGE("[%s]connect system error : %s",__FUNCTION__,strerror(errno));
+	download->sockfd = _connect_download_provider();
+	if (download->sockfd < 0) {
+		LOGE("[%s]socket system error : %s",__FUNCTION__,strerror(errno));
 		return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
 	}
 
@@ -525,6 +642,10 @@ int url_download_start(url_download_h download, int *id)
 
 	if (download->content_name)
 		requestMsg.filename.length = strlen(download->content_name);
+
+	if (download->service_data_len > 0 && download->service_data) {
+		requestMsg.service_data.length = download->service_data_len;
+	}
 
 	// headers test
 	if (url_download_get_all_http_header_fields(download, &headers, &header_length) !=
@@ -591,9 +712,20 @@ int url_download_start(url_download_h download, int *id)
 					URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
 		}
 	}
+
 	if (requestMsg.filename.length) {
 		if (send(download->sockfd, download->content_name,
 				requestMsg.filename.length * sizeof(char), 0) < 0) {
+			LOGE("[%s]request send system error : %s",
+					__FUNCTION__, strerror(errno));
+			return url_download_error(__FUNCTION__,
+					URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+		}
+	}
+
+	if (requestMsg.service_data.length) {
+		if (send(download->sockfd, download->service_data,
+				requestMsg.service_data.length * sizeof(char), 0) < 0) {
 			LOGE("[%s]request send system error : %s",
 					__FUNCTION__, strerror(errno));
 			return url_download_error(__FUNCTION__,
@@ -626,6 +758,7 @@ int url_download_start(url_download_h download, int *id)
 	if (ipc_receive_header(download->sockfd) == DOWNLOAD_CONTROL_GET_REQUEST_STATE_INFO) {
 		download_request_state_info requeststateinfo;
 		if (read(download->sockfd, &requeststateinfo, sizeof(download_request_state_info)) < 0) {
+			LOGE("[%s]receive read error",__FUNCTION__);
 			url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
 			return -1;
 		}
@@ -637,9 +770,17 @@ int url_download_start(url_download_h download, int *id)
 			// started download normally.
 			download->state = URL_DOWNLOAD_STATE_DOWNLOADING;
 		}
+		// check invalid id case
+		if (requeststateinfo.stateinfo.err == DOWNLOAD_ERROR_INVALID_PARAMETER) {
+			LOGE("[%s]invalid id",__FUNCTION__);
+			url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_INVALID_PARAMETER, NULL);
+			return URL_DOWNLOAD_ERROR_INVALID_PARAMETER;
+		}
 	} else {
+		LOGE("[%s]receive header :error",__FUNCTION__);
 		url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
 		url_download_stop(download);
+
 		return URL_DOWNLOAD_ERROR_IO_ERROR;
 	}
 
@@ -648,21 +789,36 @@ int url_download_start(url_download_h download, int *id)
 		|| download->callback.stopped
 		|| download->callback.progress
 		|| download->callback.paused) {
+		if (download->sockfd > g_download_maxfd )
+			g_download_maxfd = download->sockfd;
 		// check whether event thread is alive.
-		if (!download->callback_thread_pid
-			|| pthread_kill(download->callback_thread_pid, 0) != 0) {
-			// if want to receive the events from download-provider.
-			// create thread. it will listen the message through select().
+		if (!g_download_callback_thread_pid
+			|| pthread_kill(g_download_callback_thread_pid, 0) != 0) {
 			pthread_attr_t thread_attr;
-			if (pthread_attr_init(&thread_attr) != 0)
-				return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_OUT_OF_MEMORY, NULL);
-			if (pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_DETACHED) != 0) {
+			LOGE("[%s][%d] initialize fd_set",__FUNCTION__, __LINE__);
+			FD_ZERO(&g_download_socket_readset);
+			FD_ZERO(&g_download_socket_exceptset);
+			if (pthread_attr_init(&thread_attr) != 0) {
+				LOGE("[%s]pthread_attr_init : %s",__FUNCTION__,strerror(errno));
 				return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_OUT_OF_MEMORY, NULL);
 			}
-			// create thread for receiving the client request.
-			if (pthread_create(&download->callback_thread_pid, &thread_attr, run_receive_event_server, download) != 0)
+			if (pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_DETACHED) != 0) {
+				LOGE("[%s]pthread_attr_setdetachstate : %s",__FUNCTION__,strerror(errno));
 				return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_OUT_OF_MEMORY, NULL);
+			}
+			LOGE("[%s][%d] create event thread",__FUNCTION__, __LINE__);
+			if (pthread_create(&g_download_callback_thread_pid,
+								&thread_attr,
+								run_event_server,
+								NULL) != 0) {
+				LOGE("[%s][%d] pthread_create : %s",__FUNCTION__, __LINE__,strerror(errno));
+				return URL_DOWNLOAD_ERROR_IO_ERROR;
+			}
 		}
+		LOGE("[%s][%d] add socket[%d] to FD_SET",__FUNCTION__, __LINE__, download->sockfd);
+		// add socket to FD_SET
+		FD_SET(download->sockfd, &g_download_socket_readset); // add new descriptor to set
+		FD_SET(download->sockfd, &g_download_socket_exceptset);
 	}
 	return URL_DOWNLOAD_ERROR_NONE;
 }
@@ -714,22 +870,49 @@ int url_download_get_state(url_download_h download, url_download_state_e *state)
 	if (download == NULL || state == NULL)
 		return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_INVALID_PARAMETER, NULL);
 
-	if (download->sockfd
-		&& download->callback_thread_pid <= 0) {  // only when does not use the callback.
+	if (download->sockfd > 0) {
+		if (!(download->callback.completed
+			|| download->callback.stopped
+			|| download->callback.progress
+			|| download->callback.paused)) {// only when does not use the callback.
 
-		ipc_send_download_control(download, DOWNLOAD_CONTROL_GET_STATE_INFO);
-
-		// Sync style
-		if (ipc_receive_header(download->sockfd) == DOWNLOAD_CONTROL_GET_STATE_INFO) {
-			download_state_info stateinfo;
-			if (read(download->sockfd, &stateinfo, sizeof(download_state_info)) < 0) {
-				*state = download->state;
+			if (ipc_send_download_control(download, DOWNLOAD_CONTROL_GET_STATE_INFO)
+				== DOWNLOAD_CONTROL_GET_STATE_INFO) {
+				// Sync style
+				if (ipc_receive_header(download->sockfd) == DOWNLOAD_CONTROL_GET_STATE_INFO) {
+					download_state_info stateinfo;
+					if (read(download->sockfd, &stateinfo, sizeof(download_state_info)) < 0)
+						return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+					download->state = url_download_provider_state(stateinfo.state);
+				} else
+					return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+			} else
+				return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+		} // check callback
+	} else { // create new connection temporary, get info from provider.
+		int sockfd = _connect_download_provider();
+		if (sockfd > 0) {
+			download_controls type = DOWNLOAD_CONTROL_GET_STATE_INFO;
+			if (send(sockfd, &type, sizeof(download_controls), 0) < 0)
+				return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+			download_request_info requestMsg;
+			memset(&requestMsg, 0x00, sizeof(download_request_info));
+			if (download->requestid > 0)
+				requestMsg.requestid = download->requestid;
+			if (send(sockfd, &requestMsg, sizeof(download_request_info), 0) < 0) {
+				LOGE("[%s]request send system error : %s", __FUNCTION__, strerror(errno));
 				return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
 			}
-			download->state = url_download_provider_error(stateinfo.state);
-		} else {
-			*state = download->state;
-			return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+			// Sync style
+			if (ipc_receive_header(sockfd) == DOWNLOAD_CONTROL_GET_STATE_INFO) {
+				download_state_info stateinfo;
+				if (read(sockfd, &stateinfo, sizeof(download_state_info)) < 0)
+					return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+				download->state = url_download_provider_state(stateinfo.state);
+			} else
+				return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+			// close socket.
+			_clear_socket(sockfd);
 		}
 	}
 	*state = download->state;
@@ -863,11 +1046,29 @@ int url_download_set_notification(url_download_h download, service_h service)
 {
 	if (download == NULL)
 		return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_INVALID_PARAMETER, NULL);
-	if (service == NULL)
+	if (service == NULL) {
 		download->enable_notification = 0;
-	else
+	} else {
 		download->enable_notification = 1;
-	// service_h will be used later. it need to discuss more.
+		int len = 0;
+		bundle *b = NULL;
+		bundle_raw *raw_data = NULL;
+		b = bundle_create();
+		if (!b) {
+			return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_OUT_OF_MEMORY, NULL);
+		}
+		if (service_export_as_bundle(service, &b) < 0) {
+			bundle_free(b);
+			return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_INVALID_PARAMETER, NULL);
+		}
+		if (bundle_encode(b, &raw_data, &len) < 0) {
+			bundle_free(b);
+			return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+		}
+		download->service_data = raw_data;
+		download->service_data_len = len;
+		bundle_free(b);
+	}
 	return URL_DOWNLOAD_ERROR_NONE;
 }
 

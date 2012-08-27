@@ -2,8 +2,8 @@
 
 Name:	capi-web-url-download
 Summary:	CAPI for content download with web url
-Version:	0.0.7
-Release:	2
+Version:	0.0.8
+Release:	1
 Group:		TO_BE_FILLED_IN
 License:	TO_BE_FILLED_IN
 URL:		N/A
@@ -59,6 +59,20 @@ rm -rf %{buildroot}
 /usr/include/web/url_download.h
 
 %changelog
+* Mon Aug 27 2012 Kwangmin Bang <justine.bang@samsung.com>
+- one thread model for event
+- get state info from download-provider even if no connection
+- fix the bug take a long time to receive first event
+
+* Tue Aug 22 2012 Jungki Kwak <jungki.kwak@samsung.com>
+- Enhance the exception handling in event thread
+- Resolve a bug about state
+- Add to pass service handle data to download daemon
+
+* Mon Aug 17 2012 Jungki Kwak <jungki.kwak@samsung.com>
+- Resolve a bug when getting a state
+- Add error case for invalid id
+
 * Mon Aug 16 2012 Jungki Kwak <jungki.kwak@samsung.com>
 - Add new APIs for notification function
 - The TC is changed due to change of url_download_start

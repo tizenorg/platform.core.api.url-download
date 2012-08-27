@@ -69,10 +69,14 @@ struct url_download_s {
 	char *completed_path;
 	char *content_name;
 	char *mime_type;
+	bundle_raw *service_data;
+	int service_data_len;
 	uint file_size;
 	int sockfd;
-	pthread_t callback_thread_pid;
+	int slot_index;
 };
+
+#define MAX_DOWNLOAD_HANDLE_COUNT 5
 
 #ifdef __cplusplus
 }
