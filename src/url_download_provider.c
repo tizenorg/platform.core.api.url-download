@@ -843,27 +843,105 @@ int url_download_start(url_download_h download, int *id)
 // send pause message
 int url_download_pause(url_download_h download)
 {
-	if (download == NULL || download->sockfd <= 0)
+	if (download == NULL)
 		return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_INVALID_PARAMETER, NULL);
 
 	if (download->state != URL_DOWNLOAD_STATE_DOWNLOADING)
 		return url_download_error_invalid_state(__FUNCTION__, download);
 
-	ipc_send_download_control(download->sockfd, DOWNLOAD_CONTROL_PAUSE);
-
+	if (download->sockfd > 0) {
+		ipc_send_download_control(download->sockfd, DOWNLOAD_CONTROL_PAUSE);
+		if (!(download->callback.completed
+			|| download->callback.stopped
+			|| download->callback.progress
+			|| download->callback.paused)) {  // if no callback
+			// Sync style
+			if (ipc_receive_header(download->sockfd) == DOWNLOAD_CONTROL_GET_STATE_INFO) {
+				download_state_info stateinfo;
+				if (read(download->sockfd, &stateinfo, sizeof(download_state_info)) < 0)
+					return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+				download->state = url_download_provider_state(stateinfo.state);
+			} else
+				return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+		}
+	} else { // if no socket
+		int sockfd = _connect_download_provider();
+		if (sockfd > 0) {
+			ipc_send_download_control(sockfd, DOWNLOAD_CONTROL_PAUSE);
+			download_request_info requestMsg;
+			memset(&requestMsg, 0x00, sizeof(download_request_info));
+			if (download->requestid > 0)
+				requestMsg.requestid = download->requestid;
+			if (ipc_send_request_stateinfo(sockfd, &requestMsg)
+				!= URL_DOWNLOAD_ERROR_NONE) {
+				LOGE("[%s]request send system error : %s",
+					__FUNCTION__, strerror(errno));
+				return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+			}
+			// Sync style
+			if (ipc_receive_header(sockfd) == DOWNLOAD_CONTROL_GET_STATE_INFO) {
+				download_state_info stateinfo;
+				if (read(sockfd, &stateinfo, sizeof(download_state_info)) < 0)
+					return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+				download->state = url_download_provider_state(stateinfo.state);
+			} else
+				return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+			// close socket.
+			_clear_socket(sockfd);
+		}
+	}
 	return URL_DOWNLOAD_ERROR_NONE;
 }
 
 int url_download_resume(url_download_h download)
 {
-	if (download == NULL || download->sockfd <= 0)
+	if (download == NULL)
 		return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_INVALID_PARAMETER, NULL);
 
 	if (download->state != URL_DOWNLOAD_STATE_PAUSED)
 		return url_download_error_invalid_state(__FUNCTION__, download);
 
-	ipc_send_download_control(download->sockfd, DOWNLOAD_CONTROL_RESUME);
-
+	if (download->sockfd > 0) {
+		ipc_send_download_control(download->sockfd, DOWNLOAD_CONTROL_RESUME);
+		if (!(download->callback.completed
+			|| download->callback.stopped
+			|| download->callback.progress
+			|| download->callback.paused)) {  // if no callback
+			// Sync style
+			if (ipc_receive_header(download->sockfd) == DOWNLOAD_CONTROL_GET_STATE_INFO) {
+				download_state_info stateinfo;
+				if (read(download->sockfd, &stateinfo, sizeof(download_state_info)) < 0)
+					return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+				download->state = url_download_provider_state(stateinfo.state);
+			} else
+				return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+		}
+	} else { // if no socket
+		int sockfd = _connect_download_provider();
+		if (sockfd > 0) {
+			ipc_send_download_control(sockfd, DOWNLOAD_CONTROL_RESUME);
+			download_request_info requestMsg;
+			memset(&requestMsg, 0x00, sizeof(download_request_info));
+			if (download->requestid > 0)
+				requestMsg.requestid = download->requestid;
+			if (ipc_send_request_stateinfo(sockfd, &requestMsg)
+				!= URL_DOWNLOAD_ERROR_NONE) {
+				LOGE("[%s]request send system error : %s",
+					__FUNCTION__, strerror(errno));
+				return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+			}
+			// Sync style
+			if (ipc_receive_header(sockfd) == DOWNLOAD_CONTROL_GET_STATE_INFO) {
+				download_state_info stateinfo;
+				if (read(sockfd, &stateinfo, sizeof(download_state_info)) < 0)
+					return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+				download->state = url_download_provider_state(stateinfo.state);
+			} else
+				return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+			// close socket.
+			_clear_socket(sockfd);
+		}
+	}
 	return URL_DOWNLOAD_ERROR_NONE;
 }
 
@@ -893,7 +971,7 @@ int url_download_stop(url_download_h download)
 			} else
 				return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
 		}
-	} else {
+	} else { // if no socket
 		int sockfd = _connect_download_provider();
 		if (sockfd > 0) {
 			ipc_send_download_control(sockfd, DOWNLOAD_CONTROL_STOP);
