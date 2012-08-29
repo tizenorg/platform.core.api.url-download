@@ -611,11 +611,6 @@ int url_download_start(url_download_h download, int *id)
 
 	_clear_socket(download->sockfd);
 
-	if ((download->sockfd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
-		LOGE("[%s]socket system error : %s",__FUNCTION__,strerror(errno));
-		return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
-	}
-
 	download->sockfd = _connect_download_provider();
 	if (download->sockfd < 0) {
 		LOGE("[%s]socket system error : %s",__FUNCTION__,strerror(errno));
