@@ -59,6 +59,11 @@ rm -rf %{buildroot}
 /usr/include/web/url_download.h
 
 %changelog
+* Thu Aug 30 2012 Kwangmin Bang <justine.bang@samsung.com>
+- remove duplicated call for creating socket
+- fix the crash regarding pthread_kill
+- allow to call url_download_stop in case of PAUSED state
+
 * Mon Aug 27 2012 Kwangmin Bang <justine.bang@samsung.com>
 - one thread model for event
 - get state info from download-provider even if no connection
