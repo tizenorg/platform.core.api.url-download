@@ -40,7 +40,6 @@ static int url_download_get_all_http_header_fields(
 int g_download_maxfd = 0;
 fd_set g_download_socket_readset;
 fd_set g_download_socket_exceptset;
-pthread_t g_download_callback_thread_pid;
 static url_download_h g_download_handle_list[MAX_DOWNLOAD_HANDLE_COUNT] = {0,};
 
 url_download_state_e url_download_provider_state(int state)
@@ -276,6 +275,8 @@ void _terminate_event_server_if_no_download()
 	}
 	if (i >= MAX_DOWNLOAD_HANDLE_COUNT) {
 		LOGE("[%s][%d] shutdown event thread",__FUNCTION__, __LINE__);
+		FD_ZERO(&g_download_socket_readset);
+		FD_ZERO(&g_download_socket_exceptset);
 		g_download_maxfd = 0;
 	}
 }
@@ -491,7 +492,8 @@ void *run_event_server(void *args)
 				g_download_handle_list[i]->sockfd = 0;
 			}
 		} // MAX_CLIENT
-		_terminate_event_server_if_no_download();
+		if (i >= MAX_DOWNLOAD_HANDLE_COUNT) // timeout with no event
+			_terminate_event_server_if_no_download();
 	}
 	return 0;
 }
@@ -568,8 +570,6 @@ int url_download_destroy(url_download_h download)
 
 	g_download_handle_list[download->slot_index] = NULL;
 	download->slot_index = -1;
-
-	_terminate_event_server_if_no_download();
 
 	if (download->url)
 		free(download->url);
@@ -784,11 +784,7 @@ int url_download_start(url_download_h download, int *id)
 		|| download->callback.stopped
 		|| download->callback.progress
 		|| download->callback.paused) {
-		if (download->sockfd > g_download_maxfd )
-			g_download_maxfd = download->sockfd;
-		// check whether event thread is alive.
-		if (!g_download_callback_thread_pid
-			|| pthread_kill(g_download_callback_thread_pid, 0) != 0) {
+		if (g_download_maxfd <= 0) {
 			pthread_attr_t thread_attr;
 			LOGE("[%s][%d] initialize fd_set",__FUNCTION__, __LINE__);
 			FD_ZERO(&g_download_socket_readset);
@@ -802,7 +798,8 @@ int url_download_start(url_download_h download, int *id)
 				return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_OUT_OF_MEMORY, NULL);
 			}
 			LOGE("[%s][%d] create event thread",__FUNCTION__, __LINE__);
-			if (pthread_create(&g_download_callback_thread_pid,
+			pthread_t thread_pid;
+			if (pthread_create(&thread_pid,
 								&thread_attr,
 								run_event_server,
 								NULL) != 0) {
@@ -814,6 +811,8 @@ int url_download_start(url_download_h download, int *id)
 		// add socket to FD_SET
 		FD_SET(download->sockfd, &g_download_socket_readset); // add new descriptor to set
 		FD_SET(download->sockfd, &g_download_socket_exceptset);
+		if (download->sockfd > g_download_maxfd )
+			g_download_maxfd = download->sockfd;
 	}
 	return URL_DOWNLOAD_ERROR_NONE;
 }
