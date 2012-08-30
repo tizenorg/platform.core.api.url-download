@@ -857,7 +857,8 @@ int url_download_stop(url_download_h download)
 	if (download == NULL || download->sockfd <= 0)
 		return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_INVALID_PARAMETER, NULL);
 
-	if (download->state != URL_DOWNLOAD_STATE_DOWNLOADING)
+	if (download->state != URL_DOWNLOAD_STATE_DOWNLOADING
+		&& download->state != URL_DOWNLOAD_STATE_PAUSED)
 		return url_download_error_invalid_state(__FUNCTION__, download);
 
 	ipc_send_download_control(download, DOWNLOAD_CONTROL_STOP);
