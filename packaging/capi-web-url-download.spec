@@ -3,7 +3,7 @@
 Name:	capi-web-url-download
 Summary:	CAPI for content download with web url
 Version:	0.0.8
-Release:	2
+Release:	4
 Group:		TO_BE_FILLED_IN
 License:	TO_BE_FILLED_IN
 URL:		N/A
@@ -59,6 +59,9 @@ rm -rf %{buildroot}
 /usr/include/web/url_download.h
 
 %changelog
+* Thu Aug 30 2012 Kwangmin Bang <justine.bang@samsung.com>
+- maxfd should be updated before created event thread
+
 * Thu Aug 30 2012 Kwangmin Bang <justine.bang@samsung.com>
 - remove duplicated call for creating socket
 - fix the crash regarding pthread_kill
