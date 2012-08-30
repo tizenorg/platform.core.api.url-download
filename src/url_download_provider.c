@@ -292,7 +292,7 @@ void *run_event_server(void *args)
 	download_request_state_info requeststateinfo;
 	int i;
 
-	LOGE("[%s][%d] g_download_maxfd [%d]",__FUNCTION__, __LINE__, g_download_maxfd);
+	LOGI("[%s][%d] g_download_maxfd [%d]",__FUNCTION__, __LINE__, g_download_maxfd);
 	while(g_download_maxfd > 0) {
 
 		readset = g_download_socket_readset;
@@ -786,33 +786,43 @@ int url_download_start(url_download_h download, int *id)
 		|| download->callback.paused) {
 		if (g_download_maxfd <= 0) {
 			pthread_attr_t thread_attr;
-			LOGE("[%s][%d] initialize fd_set",__FUNCTION__, __LINE__);
+			LOGI("[%s][%d] initialize fd_set",__FUNCTION__, __LINE__);
 			FD_ZERO(&g_download_socket_readset);
 			FD_ZERO(&g_download_socket_exceptset);
+			LOGI("[%s][%d] add socket[%d] to FD_SET",__FUNCTION__, __LINE__, download->sockfd);
+			// add socket to FD_SET
+			FD_SET(download->sockfd, &g_download_socket_readset); // add new descriptor to set
+			FD_SET(download->sockfd, &g_download_socket_exceptset);
+			if (download->sockfd > g_download_maxfd )
+				g_download_maxfd = download->sockfd;
 			if (pthread_attr_init(&thread_attr) != 0) {
 				LOGE("[%s]pthread_attr_init : %s",__FUNCTION__,strerror(errno));
+				g_download_maxfd = 0;
 				return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_OUT_OF_MEMORY, NULL);
 			}
 			if (pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_DETACHED) != 0) {
 				LOGE("[%s]pthread_attr_setdetachstate : %s",__FUNCTION__,strerror(errno));
+				g_download_maxfd = 0;
 				return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_OUT_OF_MEMORY, NULL);
 			}
-			LOGE("[%s][%d] create event thread",__FUNCTION__, __LINE__);
+			LOGI("[%s][%d] create event thread",__FUNCTION__, __LINE__);
 			pthread_t thread_pid;
 			if (pthread_create(&thread_pid,
 								&thread_attr,
 								run_event_server,
 								NULL) != 0) {
 				LOGE("[%s][%d] pthread_create : %s",__FUNCTION__, __LINE__,strerror(errno));
+				g_download_maxfd = 0;
 				return URL_DOWNLOAD_ERROR_IO_ERROR;
 			}
+		} else {
+			LOGI("[%s][%d] add socket[%d] to FD_SET",__FUNCTION__, __LINE__, download->sockfd);
+			// add socket to FD_SET
+			FD_SET(download->sockfd, &g_download_socket_readset); // add new descriptor to set
+			FD_SET(download->sockfd, &g_download_socket_exceptset);
+			if (download->sockfd > g_download_maxfd )
+				g_download_maxfd = download->sockfd;
 		}
-		LOGE("[%s][%d] add socket[%d] to FD_SET",__FUNCTION__, __LINE__, download->sockfd);
-		// add socket to FD_SET
-		FD_SET(download->sockfd, &g_download_socket_readset); // add new descriptor to set
-		FD_SET(download->sockfd, &g_download_socket_exceptset);
-		if (download->sockfd > g_download_maxfd )
-			g_download_maxfd = download->sockfd;
 	}
 	return URL_DOWNLOAD_ERROR_NONE;
 }
