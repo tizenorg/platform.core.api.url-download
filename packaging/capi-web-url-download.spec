@@ -3,7 +3,7 @@
 Name:	capi-web-url-download
 Summary:	CAPI for content download with web url
 Version:	0.0.8
-Release:	4
+Release:	5
 Group:		TO_BE_FILLED_IN
 License:	TO_BE_FILLED_IN
 URL:		N/A
@@ -59,6 +59,12 @@ rm -rf %{buildroot}
 /usr/include/web/url_download.h
 
 %changelog
+* Mon Sep 03 2012 Kwangmin Bang <justine.bang@samsung.com>
+- stop the download even if no socket or callback
+- pause/resume the download even if no socket or callback
+- calling stopped callback in error case
+- request STOP for free after finished download
+
 * Thu Aug 30 2012 Kwangmin Bang <justine.bang@samsung.com>
 - maxfd should be updated before created event thread
 
