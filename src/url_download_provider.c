@@ -275,6 +275,15 @@ int _connect_download_provider()
 	return sockfd;
 }
 
+// send stop msg to free the download job
+int _clear_download_provider(int sockfd)
+{
+	LOGE("[%s][%d]",__FUNCTION__, __LINE__);
+	if (sockfd > 0)
+		ipc_send_download_control(sockfd, DOWNLOAD_CONTROL_STOP);
+	return URL_DOWNLOAD_ERROR_NONE;
+}
+
 void _terminate_event_server_if_no_download()
 {
 	// manage event thread
@@ -467,6 +476,7 @@ void *run_event_server(void *args)
 								download->callback.stopped_user_data);
 							}
 							if (download) {
+								_clear_download_provider(download->sockfd);
 								_clear_socket(download->sockfd);
 								download->sockfd = 0;
 							}
@@ -491,8 +501,8 @@ void *run_event_server(void *args)
 							download->state = URL_DOWNLOAD_STATE_COMPLETED;
 							if (download->callback.completed)
 								download->callback.completed(download, download->completed_path, download->callback.completed_user_data);
-							// terminate this thread.
 							if (download) {
+								_clear_download_provider(download->sockfd);
 								_clear_socket(download->sockfd);
 								download->sockfd = 0;
 							}
@@ -512,6 +522,7 @@ void *run_event_server(void *args)
 								download->callback.stopped_user_data);
 							}
 							if (download) {
+								_clear_download_provider(download->sockfd);
 								_clear_socket(download->sockfd);
 								download->sockfd = 0;
 							}
@@ -526,6 +537,7 @@ void *run_event_server(void *args)
 								download->callback.stopped_user_data);
 							}
 							if (download) {
+								_clear_download_provider(download->sockfd);
 								_clear_socket(download->sockfd);
 								download->sockfd = 0;
 							}
@@ -536,13 +548,8 @@ void *run_event_server(void *args)
 
 				default :
 					url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, "Invalid message");
-					url_download_stop(download);
-					if (download->callback.stopped) {
-						download->state = URL_DOWNLOAD_STATE_FAILED;
-						download->callback.stopped(download,
-						URL_DOWNLOAD_ERROR_IO_ERROR,
-						download->callback.stopped_user_data);
-					}
+					LOGI("[%s]download[%p] slot[%d]",__FUNCTION__, download, download->slot_index);
+					// download-provider closed socket, just clear it from fd_set
 					if (download) {
 						_clear_socket(download->sockfd);
 						download->sockfd = 0;
@@ -638,7 +645,8 @@ int url_download_destroy(url_download_h download)
 	if (STATE_IS_RUNNING(download))
 		url_download_stop(download);
 
-	LOGI("[%s]", __FUNCTION__);
+	if (download->sockfd > 0)
+		_clear_download_provider(download->sockfd);
 
 	_clear_socket(download->sockfd);
 	download->sockfd = 0;
