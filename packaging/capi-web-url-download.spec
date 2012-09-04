@@ -1,9 +1,8 @@
-%define ENABLE_DOWNLOAD_PROVIDER 1
 
 Name:	capi-web-url-download
 Summary:	CAPI for content download with web url
 Version:	0.0.8
-Release:	5
+Release:	6
 Group:		TO_BE_FILLED_IN
 License:	TO_BE_FILLED_IN
 URL:		N/A
@@ -11,13 +10,9 @@ Source0:	%{name}-%{version}.tar.gz
 BuildRequires: pkgconfig(capi-base-common)
 BuildRequires: pkgconfig(bundle)
 BuildRequires: pkgconfig(dlog)
-%if %ENABLE_DOWNLOAD_PROVIDER
 BuildRequires: pkgconfig(capi-appfw-app-manager)
 BuildRequires: pkgconfig(capi-appfw-application)
 BuildRequires: pkgconfig(download-provider)
-%else
-BuildRequires: pkgconfig(libdownload-agent)
-%endif
 BuildRequires: cmake
 BuildRequires: expat-devel
 
@@ -59,6 +54,14 @@ rm -rf %{buildroot}
 /usr/include/web/url_download.h
 
 %changelog
+* Tue Sep 04 2012 Jungki Kwak <jungki.kwak@samsung.com>
+- Remove unused code which is base on libdownload-agent
+- Change the name of application operation
+- Add exception handling for non requestid
+- Call clear_provider after getting the state
+- url_download_get_state return IO error
+- Resolve prevent defects
+
 * Mon Sep 03 2012 Kwangmin Bang <justine.bang@samsung.com>
 - stop the download even if no socket or callback
 - pause/resume the download even if no socket or callback

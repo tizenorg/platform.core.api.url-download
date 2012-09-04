@@ -4,19 +4,13 @@ SET(fw_name "capi-web-url-download")
 
 PROJECT(${fw_name})
 
-OPTION(ENABLE_PROVIDER "Support download through download-provider daemon" ON)
-
 SET(CMAKE_INSTALL_PREFIX /usr)
 SET(PREFIX ${CMAKE_INSTALL_PREFIX})
 
 SET(INC_DIR include)
 INCLUDE_DIRECTORIES(${INC_DIR})
 
-IF (ENABLE_PROVIDER)
-	SET(requires "dlog capi-base-common bundle capi-appfw-app-manager capi-appfw-application download-provider")
-ELSE (ENABLE_PROVIDER)
-	SET(requires "dlog capi-base-common bundle libdownload-agent")
-ENDIF (ENABLE_PROVIDER)
+SET(requires "dlog capi-base-common bundle capi-appfw-app-manager capi-appfw-application download-provider")
 MESSAGE(STATUS "PACKAGES : ${requires}")
 SET(pc_requires "capi-base-common capi-appfw-application")
 
@@ -38,12 +32,7 @@ ADD_DEFINITIONS("-DSLP_DEBUG")
 
 SET(CMAKE_EXE_LINKER_FLAGS "-Wl,--as-needed -Wl,--rpath=/usr/lib")
 
-IF (ENABLE_PROVIDER)
-    ADD_DEFINITIONS("-DENABLE_DOWNLOAD_PROVIDER")
-	SET(SOURCES src/url_download_provider.c)
-ELSE (ENABLE_PROVIDER)
-	SET(SOURCES src/url_download.c)
-ENDIF (ENABLE_PROVIDER)
+SET(SOURCES src/url_download_provider.c)
 MESSAGE(STATUS "SOURCES : ${SOURCES}")
 ADD_LIBRARY(${fw_name} SHARED ${SOURCES})
 

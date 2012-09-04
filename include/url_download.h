@@ -33,7 +33,7 @@ extern "C"
 /**
  * @brief Name for download service operation. Download Manager application is launched.
  */
-#define SERVICE_OPERATION_DOWNLOAD "http://tizen.org/appsvc/operation/download"
+#define SERVICE_OPERATION_DOWNLOAD "http://tizen.org/appcontrol/operation/download"
 
 
 /**

@@ -403,9 +403,9 @@ void *run_event_server(void *args)
 					LOGI("[%s] DOWNLOAD_CONTROL_GET_DOWNLOAD_INFO [%d]%",__FUNCTION__, downloadinfo.file_size);
 					download->state = URL_DOWNLOAD_STATE_DOWNLOADING;
 					download->file_size = downloadinfo.file_size;
-					if (downloadinfo.mime_type && strlen(downloadinfo.mime_type) > 0)
+					if (strlen(downloadinfo.mime_type) > 0)
 						download->mime_type = strdup(downloadinfo.mime_type);
-					if (downloadinfo.content_name && strlen(downloadinfo.content_name) > 0) {
+					if (strlen(downloadinfo.content_name) > 0) {
 						download->content_name = strdup(downloadinfo.content_name);
 						LOGI("content_name[%s] %", downloadinfo.content_name);
 					}
@@ -441,8 +441,7 @@ void *run_event_server(void *args)
 						downloadinginfo.received_size, download->file_size,
 						download->callback.progress_user_data);
 					}
-					if (downloadinginfo.saved_path &&
-							strlen(downloadinginfo.saved_path) > 0) {
+					if (strlen(downloadinginfo.saved_path) > 0) {
 						LOGI("[%s] saved path [%s]",__FUNCTION__, downloadinginfo.saved_path);
 						download->completed_path = strdup(downloadinginfo.saved_path);
 					}
@@ -712,16 +711,16 @@ int url_download_start(url_download_h download, int *id)
 	if (download->requestid > 0)
 		requestMsg.requestid = download->requestid;
 
-	if (download->url)
+	if (download->url && strlen(download->url) < DP_MAX_URL_LEN)
 		requestMsg.url.length = strlen(download->url);
 
-	if (download->destination)
+	if (download->destination && strlen(download->destination) < DP_MAX_PATH_LEN)
 		requestMsg.install_path.length = strlen(download->destination);
 
-	if (download->content_name)
+	if (download->content_name && strlen(download->content_name) < DP_MAX_STR_LEN)
 		requestMsg.filename.length = strlen(download->content_name);
 
-	if (download->service_data_len > 0 && download->service_data) {
+	if (download->service_data_len > 0) {
 		requestMsg.service_data.length = download->service_data_len;
 	}
 
@@ -743,12 +742,18 @@ int url_download_start(url_download_h download, int *id)
 	char *app_pkgname = NULL;
 	pid_t client_pid = getpid();
 	int errcode = app_manager_get_package(client_pid, &app_pkgname);
-	if (errcode == APP_MANAGER_ERROR_NONE)
+	if (errcode == APP_MANAGER_ERROR_NONE
+		&& app_pkgname
+		&& strlen(app_pkgname) < DP_MAX_STR_LEN)
 		requestMsg.client_packagename.length = strlen(app_pkgname);
 	else
 		LOGE("[%s] Failed to get app_pkgname app_manager_get_package",__FUNCTION__);
 
-	ipc_send_download_control(download->sockfd, DOWNLOAD_CONTROL_START);
+	if (ipc_send_download_control(download->sockfd, DOWNLOAD_CONTROL_START)
+		!= DOWNLOAD_CONTROL_START) {
+		LOGE("[%s] [%d] URL_DOWNLOAD_ERROR_IO_ERROR", __FUNCTION__, __LINE__);
+		return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+	}
 
 	if (ipc_send_request_stateinfo(download->sockfd, &requestMsg)
 		!= URL_DOWNLOAD_ERROR_NONE) {
@@ -759,11 +764,10 @@ int url_download_start(url_download_h download, int *id)
 		return url_download_error(__FUNCTION__,
 				URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
 	}
-	if (requestMsg.client_packagename.length) {
+	if (requestMsg.client_packagename.length && app_pkgname) {
 		if (send(download->sockfd, app_pkgname,
 				requestMsg.client_packagename.length * sizeof(char), 0) < 0) {
-			if (app_pkgname)
-				free(app_pkgname);
+			free(app_pkgname);
 			LOGE("[%s]request send system error : %s",
 					__FUNCTION__, strerror(errno));
 			return url_download_error(__FUNCTION__,
@@ -773,7 +777,7 @@ int url_download_start(url_download_h download, int *id)
 	if (app_pkgname)
 		free(app_pkgname);
 
-	if (requestMsg.url.length) {
+	if (requestMsg.url.length && download->url) {
 		if (send(download->sockfd, download->url,
 				requestMsg.url.length * sizeof(char), 0) < 0) {
 			LOGE("[%s]request send system error : %s",
@@ -782,7 +786,7 @@ int url_download_start(url_download_h download, int *id)
 					URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
 		}
 	}
-	if (requestMsg.install_path.length) {
+	if (requestMsg.install_path.length && download->destination) {
 		if (send(download->sockfd, download->destination,
 				requestMsg.install_path.length * sizeof(char), 0) < 0) {
 			LOGE("[%s]request send system error : %s",
@@ -792,7 +796,7 @@ int url_download_start(url_download_h download, int *id)
 		}
 	}
 
-	if (requestMsg.filename.length) {
+	if (requestMsg.filename.length && download->content_name) {
 		if (send(download->sockfd, download->content_name,
 				requestMsg.filename.length * sizeof(char), 0) < 0) {
 			LOGE("[%s]request send system error : %s",
@@ -802,7 +806,7 @@ int url_download_start(url_download_h download, int *id)
 		}
 	}
 
-	if (requestMsg.service_data.length) {
+	if (requestMsg.service_data.length && download->service_data) {
 		if (send(download->sockfd, download->service_data,
 				requestMsg.service_data.length * sizeof(char), 0) < 0) {
 			LOGE("[%s]request send system error : %s",
@@ -915,14 +919,18 @@ int url_download_start(url_download_h download, int *id)
 // send pause message
 int url_download_pause(url_download_h download)
 {
-	if (download == NULL)
+	if (download == NULL || download->requestid <= 0)
 		return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_INVALID_PARAMETER, NULL);
 
 	if (download->state != URL_DOWNLOAD_STATE_DOWNLOADING)
 		return url_download_error_invalid_state(__FUNCTION__, download);
 
 	if (download->sockfd > 0) {
-		ipc_send_download_control(download->sockfd, DOWNLOAD_CONTROL_PAUSE);
+		if (ipc_send_download_control(download->sockfd, DOWNLOAD_CONTROL_PAUSE)
+			!= DOWNLOAD_CONTROL_PAUSE) {
+			LOGE("[%s] [%d] URL_DOWNLOAD_ERROR_IO_ERROR", __FUNCTION__, __LINE__);
+			return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+		}
 		if (!(download->callback.completed
 			|| download->callback.stopped
 			|| download->callback.progress
@@ -939,25 +947,38 @@ int url_download_pause(url_download_h download)
 	} else { // if no socket
 		int sockfd = _connect_download_provider();
 		if (sockfd > 0) {
-			ipc_send_download_control(sockfd, DOWNLOAD_CONTROL_PAUSE);
-			download_request_info requestMsg;
-			memset(&requestMsg, 0x00, sizeof(download_request_info));
-			if (download->requestid > 0)
+			if (ipc_send_download_control(sockfd, DOWNLOAD_CONTROL_PAUSE)
+				== DOWNLOAD_CONTROL_PAUSE) {
+				download_request_info requestMsg;
+				memset(&requestMsg, 0x00, sizeof(download_request_info));
 				requestMsg.requestid = download->requestid;
-			if (ipc_send_request_stateinfo(sockfd, &requestMsg)
-				!= URL_DOWNLOAD_ERROR_NONE) {
-				LOGE("[%s]request send system error : %s",
-					__FUNCTION__, strerror(errno));
+				if (ipc_send_request_stateinfo(sockfd, &requestMsg)
+					!= URL_DOWNLOAD_ERROR_NONE) {
+					LOGE("[%s]request send system error : %s",
+						__FUNCTION__, strerror(errno));
+					_clear_socket(sockfd);
+					return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+				}
+				// Sync style
+				if (ipc_receive_header(sockfd)
+					== DOWNLOAD_CONTROL_GET_STATE_INFO) {
+					download_state_info stateinfo;
+					if (read(sockfd, &stateinfo, sizeof(download_state_info)) < 0) {
+						LOGE("[%s][%d] read failure",__FUNCTION__, __LINE__);
+						_clear_download_provider(sockfd);
+						_clear_socket(sockfd);
+						return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+					}
+					download->state
+						= url_download_provider_state(stateinfo.state);
+				}
+			} else {
+				_clear_socket(sockfd);
+				LOGE("[%s][%d] ipc_send_download_control failure",__FUNCTION__, __LINE__);
 				return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
 			}
-			// Sync style
-			if (ipc_receive_header(sockfd) == DOWNLOAD_CONTROL_GET_STATE_INFO) {
-				download_state_info stateinfo;
-				if (read(sockfd, &stateinfo, sizeof(download_state_info)) < 0)
-					return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
-				download->state = url_download_provider_state(stateinfo.state);
-			} else
-				return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+			// alert download-provider can free memory
+			_clear_download_provider(sockfd);
 			// close socket.
 			_clear_socket(sockfd);
 		}
@@ -967,14 +988,18 @@ int url_download_pause(url_download_h download)
 
 int url_download_resume(url_download_h download)
 {
-	if (download == NULL)
+	if (download == NULL || download->requestid <= 0)
 		return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_INVALID_PARAMETER, NULL);
 
 	if (download->state != URL_DOWNLOAD_STATE_PAUSED)
 		return url_download_error_invalid_state(__FUNCTION__, download);
 
 	if (download->sockfd > 0) {
-		ipc_send_download_control(download->sockfd, DOWNLOAD_CONTROL_RESUME);
+		if (ipc_send_download_control(download->sockfd, DOWNLOAD_CONTROL_RESUME)
+			!= DOWNLOAD_CONTROL_RESUME) {
+			LOGE("[%s] [%d] URL_DOWNLOAD_ERROR_IO_ERROR", __FUNCTION__, __LINE__);
+			return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+		}
 		if (!(download->callback.completed
 			|| download->callback.stopped
 			|| download->callback.progress
@@ -991,25 +1016,38 @@ int url_download_resume(url_download_h download)
 	} else { // if no socket
 		int sockfd = _connect_download_provider();
 		if (sockfd > 0) {
-			ipc_send_download_control(sockfd, DOWNLOAD_CONTROL_RESUME);
-			download_request_info requestMsg;
-			memset(&requestMsg, 0x00, sizeof(download_request_info));
-			if (download->requestid > 0)
+			if (ipc_send_download_control(sockfd, DOWNLOAD_CONTROL_RESUME)
+				== DOWNLOAD_CONTROL_RESUME) {
+				download_request_info requestMsg;
+				memset(&requestMsg, 0x00, sizeof(download_request_info));
 				requestMsg.requestid = download->requestid;
-			if (ipc_send_request_stateinfo(sockfd, &requestMsg)
-				!= URL_DOWNLOAD_ERROR_NONE) {
-				LOGE("[%s]request send system error : %s",
-					__FUNCTION__, strerror(errno));
+				if (ipc_send_request_stateinfo(sockfd, &requestMsg)
+					!= URL_DOWNLOAD_ERROR_NONE) {
+					_clear_socket(sockfd);
+					LOGE("[%s]request send system error : %s",
+						__FUNCTION__, strerror(errno));
+					return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+				}
+				// Sync style
+				if (ipc_receive_header(sockfd)
+					== DOWNLOAD_CONTROL_GET_STATE_INFO) {
+					download_state_info stateinfo;
+					if (read(sockfd, &stateinfo, sizeof(download_state_info)) < 0) {
+						LOGE("[%s][%d] read failure",__FUNCTION__, __LINE__);
+						_clear_download_provider(sockfd);
+						_clear_socket(sockfd);
+						return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+					}
+					download->state
+						= url_download_provider_state(stateinfo.state);
+				}
+			} else {
+				_clear_socket(sockfd);
+				LOGE("[%s][%d] ipc_send_download_control failure",__FUNCTION__, __LINE__);
 				return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
 			}
-			// Sync style
-			if (ipc_receive_header(sockfd) == DOWNLOAD_CONTROL_GET_STATE_INFO) {
-				download_state_info stateinfo;
-				if (read(sockfd, &stateinfo, sizeof(download_state_info)) < 0)
-					return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
-				download->state = url_download_provider_state(stateinfo.state);
-			} else
-				return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+			// alert download-provider can free memory
+			_clear_download_provider(sockfd);
 			// close socket.
 			_clear_socket(sockfd);
 		}
@@ -1021,7 +1059,7 @@ int url_download_resume(url_download_h download)
 // send stop message
 int url_download_stop(url_download_h download)
 {
-	if (download == NULL)
+	if (download == NULL || download->requestid <= 0)
 		return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_INVALID_PARAMETER, NULL);
 
 	if (download->state != URL_DOWNLOAD_STATE_DOWNLOADING
@@ -1050,25 +1088,38 @@ int url_download_stop(url_download_h download)
 	} else { // if no socket
 		int sockfd = _connect_download_provider();
 		if (sockfd > 0) {
-			ipc_send_download_control(sockfd, DOWNLOAD_CONTROL_STOP);
-			download_request_info requestMsg;
-			memset(&requestMsg, 0x00, sizeof(download_request_info));
-			if (download->requestid > 0)
+			if (ipc_send_download_control(sockfd, DOWNLOAD_CONTROL_STOP)
+				== DOWNLOAD_CONTROL_STOP) {
+				download_request_info requestMsg;
+				memset(&requestMsg, 0x00, sizeof(download_request_info));
 				requestMsg.requestid = download->requestid;
-			if (ipc_send_request_stateinfo(sockfd, &requestMsg)
-				!= URL_DOWNLOAD_ERROR_NONE) {
-				LOGE("[%s]request send system error : %s",
-					__FUNCTION__, strerror(errno));
+				if (ipc_send_request_stateinfo(sockfd, &requestMsg)
+					!= URL_DOWNLOAD_ERROR_NONE) {
+					_clear_socket(sockfd);
+					LOGE("[%s]request send system error : %s",
+						__FUNCTION__, strerror(errno));
+					return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+				}
+				// Sync style
+				if (ipc_receive_header(sockfd)
+					== DOWNLOAD_CONTROL_GET_STATE_INFO) {
+					download_state_info stateinfo;
+					if (read(sockfd, &stateinfo, sizeof(download_state_info)) < 0) {
+						LOGE("[%s][%d] read failure",__FUNCTION__, __LINE__);
+						_clear_download_provider(sockfd);
+						_clear_socket(sockfd);
+						return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+					}
+					download->state
+						= url_download_provider_state(stateinfo.state);
+				}
+			} else {
+				_clear_socket(sockfd);
+				LOGE("[%s][%d] ipc_send_download_control failure",__FUNCTION__, __LINE__);
 				return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
 			}
-			// Sync style
-			if (ipc_receive_header(sockfd) == DOWNLOAD_CONTROL_GET_STATE_INFO) {
-				download_state_info stateinfo;
-				if (read(sockfd, &stateinfo, sizeof(download_state_info)) < 0)
-					return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
-				download->state = url_download_provider_state(stateinfo.state);
-			} else
-				return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+			// alert download-provider can free memory
+			_clear_download_provider(sockfd);
 			// close socket.
 			_clear_socket(sockfd);
 		}
@@ -1080,6 +1131,11 @@ int url_download_get_state(url_download_h download, url_download_state_e *state)
 {
 	if (download == NULL || state == NULL)
 		return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_INVALID_PARAMETER, NULL);
+
+	if (download->requestid <= 0) {
+		*state = download->state;
+		return URL_DOWNLOAD_ERROR_NONE;
+	}
 
 	if (download->sockfd > 0) {
 		if (!(download->callback.completed
@@ -1103,25 +1159,40 @@ int url_download_get_state(url_download_h download, url_download_state_e *state)
 	} else { // create new connection temporary, get info from provider.
 		int sockfd = _connect_download_provider();
 		if (sockfd > 0) {
-			ipc_send_download_control(sockfd, DOWNLOAD_CONTROL_GET_STATE_INFO);
-			download_request_info requestMsg;
-			memset(&requestMsg, 0x00, sizeof(download_request_info));
-			if (download->requestid > 0)
+			if (ipc_send_download_control(sockfd, DOWNLOAD_CONTROL_GET_STATE_INFO)
+				== DOWNLOAD_CONTROL_GET_STATE_INFO) {
+				download_request_info requestMsg;
+				memset(&requestMsg, 0x00, sizeof(download_request_info));
 				requestMsg.requestid = download->requestid;
-			if (ipc_send_request_stateinfo(sockfd, &requestMsg)
-				!= URL_DOWNLOAD_ERROR_NONE) {
-				LOGE("[%s]request send system error : %s",
-					__FUNCTION__, strerror(errno));
+				if (ipc_send_request_stateinfo(sockfd, &requestMsg)
+					!= URL_DOWNLOAD_ERROR_NONE) {
+					_clear_socket(sockfd);
+					LOGE("[%s]request send system error : %s",
+						__FUNCTION__, strerror(errno));
+					return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+				}
+				// Sync style
+				if (ipc_receive_header(sockfd)
+					== DOWNLOAD_CONTROL_GET_STATE_INFO) {
+					download_state_info stateinfo;
+					if (read(sockfd, &stateinfo, sizeof(download_state_info)) < 0) {
+						LOGE("[%s][%d] read failure",__FUNCTION__, __LINE__);
+						_clear_download_provider(sockfd);
+						_clear_socket(sockfd);
+						return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+					}
+					download->state
+						= url_download_provider_state(stateinfo.state);
+				}
+				// else means NONE
+				download->state = URL_DOWNLOAD_STATE_READY;
+			} else {
+				_clear_socket(sockfd);
+				LOGE("[%s][%d] ipc_send_download_control failure",__FUNCTION__, __LINE__);
 				return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
 			}
-			// Sync style
-			if (ipc_receive_header(sockfd) == DOWNLOAD_CONTROL_GET_STATE_INFO) {
-				download_state_info stateinfo;
-				if (read(sockfd, &stateinfo, sizeof(download_state_info)) < 0)
-					return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
-				download->state = url_download_provider_state(stateinfo.state);
-			} else
-				return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, NULL);
+			// alert download-provider can free memory
+			_clear_download_provider(sockfd);
 			// close socket.
 			_clear_socket(sockfd);
 		}
