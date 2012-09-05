@@ -702,6 +702,9 @@ int url_download_start(url_download_h download, int *id)
 	if (download->state == URL_DOWNLOAD_STATE_DOWNLOADING)
 		return url_download_error_invalid_state(__FUNCTION__, download);
 
+	if (download->state == URL_DOWNLOAD_STATE_COMPLETED)
+		return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_ALREADY_COMPLETED, NULL);
+
 	if (download->state == URL_DOWNLOAD_STATE_PAUSED)
 		return url_download_resume(download);
 
