@@ -62,6 +62,7 @@ typedef enum
 	URL_DOWNLOAD_ERROR_INVALID_DESTINATION = TIZEN_ERROR_WEB_CLASS | 0x25, /**< Invalid destination */
 	URL_DOWNLOAD_ERROR_TOO_MANY_DOWNLOADS = TIZEN_ERROR_WEB_CLASS | 0x26, /**< Full of available downloading items */
 	URL_DOWNLOAD_ERROR_ALREADY_COMPLETED = TIZEN_ERROR_WEB_CLASS | 0x27, /**< The download is already completed */
+	URL_DOWNLOAD_ERROR_NO_DATA = TIZEN_ERROR_NO_DATA, /**< No data */
 } url_download_error_e;
 
 

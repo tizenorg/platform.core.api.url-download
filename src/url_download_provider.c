@@ -1257,7 +1257,8 @@ int url_download_get_url(url_download_h download, char **url)
 
 		if (url_dup == NULL)
 			return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_OUT_OF_MEMORY, NULL);
-	}
+	} else
+		return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_NO_DATA, NULL);
 
 	*url = url_dup;
 
@@ -1303,7 +1304,8 @@ int url_download_get_destination(url_download_h download, char **path)
 
 		if (path_dup == NULL)
 			return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_OUT_OF_MEMORY, NULL);
-	}
+	} else
+		return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_NO_DATA, NULL);
 
 	*path = path_dup;
 
@@ -1335,7 +1337,8 @@ int url_download_get_file_name(url_download_h download, char **file_name)
 
 		if (filename_dup == NULL)
 			return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_OUT_OF_MEMORY, NULL);
-	}
+	} else
+		return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_NO_DATA, NULL);
 
 	*file_name = filename_dup;
 	return URL_DOWNLOAD_ERROR_NONE;
@@ -1389,7 +1392,8 @@ int url_download_get_downloaded_file(url_download_h download, char **path)
 
 		if (path_dup == NULL)
 			return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_OUT_OF_MEMORY, NULL);
-	}
+	} else
+		return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_INVALID_STATE, NULL);
 
 	*path = path_dup;
 	return URL_DOWNLOAD_ERROR_NONE;
@@ -1407,7 +1411,8 @@ int url_download_get_mime(url_download_h download, char **mime_type)
 
 		if (mime_dup == NULL)
 			return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_OUT_OF_MEMORY, NULL);
-	}
+	} else
+		return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_INVALID_STATE, NULL);
 
 	*mime_type = mime_dup;
 	return URL_DOWNLOAD_ERROR_NONE;
