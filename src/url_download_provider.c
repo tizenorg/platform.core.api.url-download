@@ -474,7 +474,12 @@ void *run_event_server(void *args)
 								url_download_provider_error(stateinfo.err),
 								download->callback.stopped_user_data);
 							}
-							if (download) {
+							// check state again,
+							// some client may change the state in callback
+							if (download
+								&& (download->state == URL_DOWNLOAD_STATE_COMPLETED
+									|| download->state == URL_DOWNLOAD_STATE_FAILED
+									|| download->state == URL_DOWNLOAD_STATE_READY)) {
 								_clear_download_provider(download->sockfd);
 								_clear_socket(download->sockfd);
 								download->sockfd = 0;
@@ -500,7 +505,11 @@ void *run_event_server(void *args)
 							download->state = URL_DOWNLOAD_STATE_COMPLETED;
 							if (download->callback.completed)
 								download->callback.completed(download, download->completed_path, download->callback.completed_user_data);
-							if (download) {
+							// check state again,
+							// some client may change the state in callback
+							if (download
+								&& (download->state == URL_DOWNLOAD_STATE_COMPLETED
+									|| download->state == URL_DOWNLOAD_STATE_FAILED)) {
 								_clear_download_provider(download->sockfd);
 								_clear_socket(download->sockfd);
 								download->sockfd = 0;
@@ -520,7 +529,11 @@ void *run_event_server(void *args)
 								url_download_provider_error(stateinfo.err),
 								download->callback.stopped_user_data);
 							}
-							if (download) {
+							// check state again,
+							// some client may change the state in callback
+							if (download
+								&& (download->state == URL_DOWNLOAD_STATE_COMPLETED
+									|| download->state == URL_DOWNLOAD_STATE_FAILED)) {
 								_clear_download_provider(download->sockfd);
 								_clear_socket(download->sockfd);
 								download->sockfd = 0;
@@ -638,6 +651,7 @@ int url_download_create_by_id(int id, url_download_h *download)
 // disconnect from download-provider
 int url_download_destroy(url_download_h download)
 {
+	LOGI("[%s][%d]",__FUNCTION__, __LINE__);
 	if (download == NULL)
 		return url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_INVALID_PARAMETER, NULL);
 
