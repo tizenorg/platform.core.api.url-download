@@ -2,7 +2,7 @@
 Name:	capi-web-url-download
 Summary:	CAPI for content download with web url
 Version:	0.0.8
-Release:	6
+Release:	8
 Group:		TO_BE_FILLED_IN
 License:	TO_BE_FILLED_IN
 URL:		N/A
@@ -54,6 +54,11 @@ rm -rf %{buildroot}
 /usr/include/web/url_download.h
 
 %changelog
+* Thu Sep 06 2012 Kwangmin Bang <justine.bang@samsung.com>
+- check the state before clear socket
+- add limitation in already completed state
+- add checking INVALID_STATE error
+
 * Tue Sep 04 2012 Jungki Kwak <jungki.kwak@samsung.com>
 - Remove unused code which is base on libdownload-agent
 - Change the name of application operation
