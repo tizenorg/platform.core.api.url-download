@@ -309,14 +309,17 @@ void *run_event_server(void *args)
 	download_content_info downloadinfo;
 	downloading_state_info downloadinginfo;
 	download_request_state_info requeststateinfo;
-	int i;
+	unsigned i;
+	unsigned is_timeout = 1;
 
 	LOGI("[%s][%d] g_download_maxfd [%d]",__FUNCTION__, __LINE__, g_download_maxfd);
 	while(g_download_maxfd > 0) {
 
 		readset = g_download_socket_readset;
 		exceptset = g_download_socket_exceptset;
+		memset(&timeout, 0x00, sizeof(struct timeval));
 		timeout.tv_sec = 1;
+		is_timeout = 1;
 
 		if (select((g_download_maxfd+1), &readset, 0, &exceptset, &timeout) < 0) {
 			LOGE("[%s]pthread_create : %s",__FUNCTION__,strerror(errno));
@@ -328,6 +331,7 @@ void *run_event_server(void *args)
 			if (g_download_handle_list[i]->sockfd <= 0)
 				continue;
 			if (FD_ISSET(g_download_handle_list[i]->sockfd, &readset) > 0) {
+				is_timeout = 0;
 				url_download_h download = g_download_handle_list[i];
 				switch(ipc_receive_header(download->sockfd)) {
 				case DOWNLOAD_CONTROL_GET_REQUEST_STATE_INFO :
@@ -559,6 +563,7 @@ void *run_event_server(void *args)
 					break;
 
 				default :
+					is_timeout = 0;
 					url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, "Invalid message");
 					LOGI("[%s]download[%p] slot[%d]",__FUNCTION__, download, download->slot_index);
 					// download-provider closed socket, just clear it from fd_set
@@ -569,6 +574,7 @@ void *run_event_server(void *args)
 					break;
 				} // switch
 			} else if (FD_ISSET(g_download_handle_list[i]->sockfd, &exceptset) > 0) {
+				is_timeout = 0;
 				url_download_error(__FUNCTION__, URL_DOWNLOAD_ERROR_IO_ERROR, "IO Exception");
 				url_download_stop(g_download_handle_list[i]);
 				if (g_download_handle_list[i]->callback.stopped) {
@@ -584,7 +590,7 @@ void *run_event_server(void *args)
 				}
 			}
 		} // MAX_CLIENT
-		if (i >= MAX_DOWNLOAD_HANDLE_COUNT) // timeout with no event
+		if (is_timeout) // timeout with no event
 			_terminate_event_server_if_no_download();
 	}
 	return 0;
