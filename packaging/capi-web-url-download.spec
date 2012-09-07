@@ -3,7 +3,7 @@ Name:	capi-web-url-download
 Summary:	CAPI for content download with web url
 Version:	0.0.8
 Release:	9
-Group:		TO_BE_FILLED_IN
+Group:		System/Libraries
 License:	TO_BE_FILLED_IN
 URL:		N/A
 Source0:	%{name}-%{version}.tar.gz
@@ -20,9 +20,9 @@ BuildRequires: expat-devel
 CAPI for the content download
 
 %package devel
-Summary:    url download
-Group:      Development/Libraries
-Requires:   %{name} = %{version}-%{release}
+Summary:	url download
+Group:		Development/Libraries
+Requires	%{name} = %{version}-%{release}
 
 %description devel
 CAPI for content downloading with web url (developement files)
@@ -45,12 +45,12 @@ rm -rf %{buildroot}
 
 %files
 %defattr(-,root,root,-)
-/usr/lib/libcapi-web-url-download.so
+%{_libdir}/libcapi-web-url-download.so
 
 %files devel
 %defattr(-,root,root,-)
-/usr/lib/libcapi-web-url-download.so
-/usr/lib/pkgconfig/capi-web-url-download.pc
+%{_libdir}/libcapi-web-url-download.so
+%{_libdir}/pkgconfig/capi-web-url-download.pc
 /usr/include/web/url_download.h
 
 %changelog
