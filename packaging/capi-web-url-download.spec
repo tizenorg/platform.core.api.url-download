@@ -2,7 +2,7 @@
 Name:	capi-web-url-download
 Summary:	CAPI for content download with web url
 Version:	0.0.8
-Release:	8
+Release:	9
 Group:		TO_BE_FILLED_IN
 License:	TO_BE_FILLED_IN
 URL:		N/A
@@ -54,6 +54,9 @@ rm -rf %{buildroot}
 /usr/include/web/url_download.h
 
 %changelog
+* Fri Sep 07 2012 Kwangmin Bang <justine.bang@samsung.com>
+- fix timeout thread can run exactly
+
 * Thu Sep 06 2012 Kwangmin Bang <justine.bang@samsung.com>
 - check the state before clear socket
 - add limitation in already completed state
