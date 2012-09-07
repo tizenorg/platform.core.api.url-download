@@ -5,7 +5,7 @@ Version:	0.0.8
 Release:	9
 Group:		Development/Libraries
 License:	TO_BE_FILLED_IN
-URL:		N/A
+URL:		Apache
 Source0:	%{name}-%{version}.tar.gz
 BuildRequires: pkgconfig(capi-base-common)
 BuildRequires: pkgconfig(bundle)
