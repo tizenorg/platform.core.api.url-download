@@ -22,7 +22,7 @@ CAPI for the content download
 %package devel
 Summary:	url download
 Group:		Development/Libraries
-Requires	%{name} = %{version}-%{release}
+Requires:	%{name} = %{version}-%{release}
 
 %description devel
 CAPI for content downloading with web url (developement files)
