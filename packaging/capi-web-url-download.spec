@@ -3,7 +3,7 @@ Name:	capi-web-url-download
 Summary:	CAPI for content download with web url
 Version:	0.0.8
 Release:	9
-Group:		System/Libraries
+Group:		Development/Libraries
 License:	TO_BE_FILLED_IN
 URL:		N/A
 Source0:	%{name}-%{version}.tar.gz
