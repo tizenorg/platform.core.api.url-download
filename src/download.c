@@ -15,16 +15,23 @@
 #include <download.h>
 #include <download-provider.h>
 
-#ifdef DP_ECHO_TEST
-#define DOWNLOAD_ECHO_SUPPORT
-#endif
-#ifdef DOWNLOAD_ECHO_SUPPORT
-#include <sys/ioctl.h>
-#endif
-
 #ifdef DP_DBUS_ACTIVATION
 #include <dbus/dbus.h>
 #endif
+
+#ifdef DP_ECHO_TEST
+#include <sys/ioctl.h>
+#endif
+
+#define DP_CHECK_PROVIDER_STATUS do {\
+	if (__check_ipc_status(g_download_ipc->cmd_socket) < 0) {\
+		pthread_mutex_unlock((&g_download_ipc->mutex));\
+		pthread_mutex_unlock(&g_download_mutex);\
+		if (errno != EAGAIN && errno != EINTR)\
+			_disconnect_from_provider();\
+		return DOWNLOAD_ERROR_IO_ERROR;\
+	}\
+} while(0)
 
 #define MAX_DOWNLOAD_HANDLE 5
 
@@ -220,7 +227,7 @@ int _download_change_dp_state(int state)
 	default:
 		break;
 	}
-	return DOWNLOAD_ERROR_NONE;
+	return DOWNLOAD_STATE_NONE;
 }
 
 void _download_print_str_state(int state)
@@ -385,7 +392,11 @@ download_error_e _download_ipc_read_return(int fd)
 		if (errno == EPIPE) {
 			TRACE_INFO("[EPIPE] Broken Pipe errno [%d]", errno);
 		} else if (errno == EAGAIN) {
-			TRACE_INFO("[EAGAIN] Resource temporarily unavailable errno [%d]", errno);
+			TRACE_INFO
+				("[EAGAIN] Resource temporarily unavailable errno [%d]",
+				errno);
+		} else if (errno == EINTR) {
+			TRACE_ERROR("[EINTR] Interrupted System Call");
 		} else {
 			TRACE_INFO("errno [%d]", errno);
 		}
@@ -599,9 +610,9 @@ int _disconnect_from_provider()
 	return DOWNLOAD_ERROR_NONE;
 }
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
+#ifdef DP_ECHO_TEST
 // clear read buffer. call in head of API before calling IPC_SEND
-void __clear_read_buffer(int fd)
+static void __clear_read_buffer(int fd)
 {
 	long i;
 	long unread_count;
@@ -620,15 +631,15 @@ void __clear_read_buffer(int fd)
 		}
 	}
 }
+#endif
 
 // ask to provider before sending a command.
 // if provider wait in some commnad, can not response immediately
 // capi will wait in read block.
 // after asking, call clear_read_buffer.
-
-
-int _check_ipc_status(int fd)
+static int __check_ipc_status(int fd)
 {
+#ifdef DP_ECHO_TEST
 	// echo from provider
 	download_error_e errorcode = _send_simple_cmd(-1, DP_CMD_ECHO);
 	if (errorcode != DOWNLOAD_ERROR_NONE) {
@@ -638,15 +649,14 @@ int _check_ipc_status(int fd)
 				TRACE_INFO("[EAGAIN] provider is busy");
 			} else {
 				TRACE_INFO("[CRITICAL] Broken Socket");
-				_disconnect_from_provider();
 			}
 			return -1;
 		}
 	}
 	__clear_read_buffer(fd);
+#endif
 	return 0;
 }
-#endif
 
 // listen ASYNC state event, no timeout
 void *_download_event_manager(void *arg)
@@ -706,7 +716,7 @@ void *_download_event_manager(void *arg)
 					free(eventinfo);
 				TRACE_STRERROR("[CRITICAL] Can not read Event packet");
 				pthread_mutex_unlock(&g_download_mutex);
-				if (errno != EAGAIN) // if not timeout. end thread
+				if (errno != EAGAIN && errno != EINTR) // if not timeout. end thread
 					break;
 				continue;
 			}
@@ -918,19 +928,15 @@ int download_create(int *download_id)
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	errorcode = _send_simple_cmd(-1, DP_CMD_CREATE);
 	if (errorcode != DOWNLOAD_ERROR_NONE) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errorcode == DOWNLOAD_ERROR_IO_ERROR && errno != EAGAIN)
-			_disconnect_from_provider();
+		if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
+			if (errno != EAGAIN && errno != EINTR)
+				_disconnect_from_provider();
+		}
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
 	}
@@ -939,7 +945,7 @@ int download_create(int *download_id)
 	t_download_id = _download_ipc_read_int(g_download_ipc->cmd_socket);
 	if (t_download_id < 0) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return DOWNLOAD_ERROR_IO_ERROR;
@@ -974,13 +980,7 @@ int download_destroy(int download_id)
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	index = _get_my_slot_index(download_id);
 	if (index >= 0) {
@@ -993,8 +993,10 @@ int download_destroy(int download_id)
 	errorcode = _send_simple_cmd(download_id, DP_CMD_DESTROY);
 	if (errorcode != DOWNLOAD_ERROR_NONE) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errorcode == DOWNLOAD_ERROR_IO_ERROR && errno != EAGAIN)
-			_disconnect_from_provider();
+		if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
+			if (errno != EAGAIN && errno != EINTR)
+				_disconnect_from_provider();
+		}
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
 	}
@@ -1036,19 +1038,15 @@ int download_start(int download_id)
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	errorcode = _send_simple_cmd(download_id, DP_CMD_START);
 	if (errorcode != DOWNLOAD_ERROR_NONE) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errorcode == DOWNLOAD_ERROR_IO_ERROR && errno != EAGAIN)
-			_disconnect_from_provider();
+		if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
+			if (errno != EAGAIN && errno != EINTR)
+				_disconnect_from_provider();
+		}
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
 	}
@@ -1076,19 +1074,15 @@ int download_pause(int download_id)
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	errorcode = _send_simple_cmd(download_id, DP_CMD_PAUSE);
 	if (errorcode != DOWNLOAD_ERROR_NONE) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errorcode == DOWNLOAD_ERROR_IO_ERROR && errno != EAGAIN)
-			_disconnect_from_provider();
+		if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
+			if (errno != EAGAIN && errno != EINTR)
+				_disconnect_from_provider();
+		}
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
 	}
@@ -1116,19 +1110,15 @@ int download_cancel(int download_id)
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	errorcode = _send_simple_cmd(download_id, DP_CMD_CANCEL);
 	if (errorcode != DOWNLOAD_ERROR_NONE) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errorcode == DOWNLOAD_ERROR_IO_ERROR && errno != EAGAIN)
-			_disconnect_from_provider();
+		if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
+			if (errno != EAGAIN && errno != EINTR)
+				_disconnect_from_provider();
+		}
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
 	}
@@ -1159,13 +1149,7 @@ int download_set_url(int download_id, const char *url)
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	// send commnad with ID
 	if (_download_ipc_send_command
@@ -1191,7 +1175,7 @@ int download_set_url(int download_id, const char *url)
 	if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
 		TRACE_ERROR("[CHECK IO] (%d)", download_id);
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
@@ -1222,19 +1206,15 @@ int download_get_url(int download_id, char **url)
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	errorcode = _send_simple_cmd(download_id, DP_CMD_GET_URL);
 	if (errorcode != DOWNLOAD_ERROR_NONE) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errorcode == DOWNLOAD_ERROR_IO_ERROR && errno != EAGAIN)
-			_disconnect_from_provider();
+		if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
+			if (errno != EAGAIN && errno != EINTR)
+				_disconnect_from_provider();
+		}
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
 	}
@@ -1242,7 +1222,7 @@ int download_get_url(int download_id, char **url)
 	value = _ipc_read_string(g_download_ipc->cmd_socket);
 	if (value == NULL) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return DOWNLOAD_ERROR_IO_ERROR;
@@ -1280,13 +1260,7 @@ int download_set_network_type(int download_id,
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	if (_download_ipc_send_command(g_download_ipc->cmd_socket,
 		download_id, DP_CMD_SET_NETWORK_TYPE)
@@ -1310,7 +1284,7 @@ int download_set_network_type(int download_id,
 	if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
 		TRACE_ERROR("[CHECK IO] (%d)", download_id);
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
@@ -1341,19 +1315,15 @@ int download_get_network_type(int download_id,
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	errorcode = _send_simple_cmd(download_id, DP_CMD_GET_NETWORK_TYPE);
 	if (errorcode != DOWNLOAD_ERROR_NONE) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errorcode == DOWNLOAD_ERROR_IO_ERROR && errno != EAGAIN)
-			_disconnect_from_provider();
+		if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
+			if (errno != EAGAIN && errno != EINTR)
+				_disconnect_from_provider();
+		}
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
 	}
@@ -1361,7 +1331,7 @@ int download_get_network_type(int download_id,
 	network_type = _download_ipc_read_int(g_download_ipc->cmd_socket);
 	if (network_type < 0) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return DOWNLOAD_ERROR_IO_ERROR;
@@ -1401,13 +1371,7 @@ int download_set_destination(int download_id, const char *path)
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	// send commnad with ID
 	if (_download_ipc_send_command
@@ -1433,7 +1397,7 @@ int download_set_destination(int download_id, const char *path)
 	if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
 		TRACE_ERROR("[CHECK IO] (%d)", download_id);
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
@@ -1464,20 +1428,16 @@ int download_get_destination(int download_id, char **path)
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	errorcode =
 		_send_simple_cmd(download_id, DP_CMD_GET_DESTINATION);
 	if (errorcode != DOWNLOAD_ERROR_NONE) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errorcode == DOWNLOAD_ERROR_IO_ERROR && errno != EAGAIN)
-			_disconnect_from_provider();
+		if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
+			if (errno != EAGAIN && errno != EINTR)
+				_disconnect_from_provider();
+		}
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
 	}
@@ -1485,7 +1445,7 @@ int download_get_destination(int download_id, char **path)
 	value = _ipc_read_string(g_download_ipc->cmd_socket);
 	if (value == NULL) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return DOWNLOAD_ERROR_IO_ERROR;
@@ -1519,13 +1479,7 @@ int download_set_file_name(int download_id, const char *file_name)
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	// send commnad with ID
 	if (_download_ipc_send_command
@@ -1551,7 +1505,7 @@ int download_set_file_name(int download_id, const char *file_name)
 	if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
 		TRACE_ERROR("[CHECK IO] (%d)", download_id);
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
@@ -1581,20 +1535,16 @@ int download_get_file_name(int download_id, char **file_name)
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	errorcode =
 		_send_simple_cmd(download_id, DP_CMD_GET_FILENAME);
 	if (errorcode != DOWNLOAD_ERROR_NONE) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errorcode == DOWNLOAD_ERROR_IO_ERROR && errno != EAGAIN)
-			_disconnect_from_provider();
+		if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
+			if (errno != EAGAIN && errno != EINTR)
+				_disconnect_from_provider();
+		}
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
 	}
@@ -1602,7 +1552,7 @@ int download_get_file_name(int download_id, char **file_name)
 	value = _ipc_read_string(g_download_ipc->cmd_socket);
 	if (value == NULL) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return DOWNLOAD_ERROR_IO_ERROR;
@@ -1639,13 +1589,7 @@ int download_set_notification(int download_id, bool enable)
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	if (_download_ipc_send_command(g_download_ipc->cmd_socket,
 		download_id, DP_CMD_SET_NOTIFICATION)
@@ -1669,7 +1613,7 @@ int download_set_notification(int download_id, bool enable)
 	if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
 		TRACE_ERROR("[CHECK IO] (%d)", download_id);
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
@@ -1704,26 +1648,22 @@ int download_get_notification(int download_id, bool *enable)
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	errorcode = _send_simple_cmd(download_id, DP_CMD_GET_NOTIFICATION);
 	if (errorcode != DOWNLOAD_ERROR_NONE) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errorcode == DOWNLOAD_ERROR_IO_ERROR && errno != EAGAIN)
-			_disconnect_from_provider();
+		if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
+			if (errno != EAGAIN && errno != EINTR)
+				_disconnect_from_provider();
+		}
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
 	}
 	value = _download_ipc_read_int(g_download_ipc->cmd_socket);
 	if (value < 0) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return DOWNLOAD_ERROR_IO_ERROR;
@@ -1756,20 +1696,16 @@ int download_get_downloaded_file_path(int download_id, char **path)
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	errorcode =
 		_send_simple_cmd(download_id, DP_CMD_GET_SAVED_PATH);
 	if (errorcode != DOWNLOAD_ERROR_NONE) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errorcode == DOWNLOAD_ERROR_IO_ERROR && errno != EAGAIN)
-			_disconnect_from_provider();
+		if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
+			if (errno != EAGAIN && errno != EINTR)
+				_disconnect_from_provider();
+		}
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
 	}
@@ -1777,7 +1713,7 @@ int download_get_downloaded_file_path(int download_id, char **path)
 	value = _ipc_read_string(g_download_ipc->cmd_socket);
 	if (value == NULL) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return DOWNLOAD_ERROR_IO_ERROR;
@@ -1811,13 +1747,7 @@ int download_set_notification_extra_param(int download_id, char *key, char *valu
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	// send commnad with ID
 	if (_download_ipc_send_command
@@ -1853,7 +1783,7 @@ int download_set_notification_extra_param(int download_id, char *key, char *valu
 	if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
 		TRACE_ERROR("[CHECK IO] (%d)", download_id);
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
@@ -1884,19 +1814,15 @@ int download_get_notification_extra_param(int download_id, char **key, char **va
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	errorcode = _send_simple_cmd(download_id, DP_CMD_GET_EXTRA_PARAM);
 	if (errorcode != DOWNLOAD_ERROR_NONE) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errorcode == DOWNLOAD_ERROR_IO_ERROR && errno != EAGAIN)
-			_disconnect_from_provider();
+		if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
+			if (errno != EAGAIN && errno != EINTR)
+				_disconnect_from_provider();
+		}
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
 	}
@@ -1904,7 +1830,7 @@ int download_get_notification_extra_param(int download_id, char **key, char **va
 	key_str = _ipc_read_string(g_download_ipc->cmd_socket);
 	if (key_str == NULL) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return DOWNLOAD_ERROR_IO_ERROR;
@@ -1913,7 +1839,7 @@ int download_get_notification_extra_param(int download_id, char **key, char **va
 	value_str = _ipc_read_string(g_download_ipc->cmd_socket);
 	if (value_str == NULL) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		free(key_str);
@@ -1953,13 +1879,7 @@ int download_add_http_header_field(int download_id, const char *field,
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	// send commnad with ID
 	if (_download_ipc_send_command
@@ -1995,7 +1915,7 @@ int download_add_http_header_field(int download_id, const char *field,
 	if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
 		TRACE_ERROR("[CHECK IO] (%d)", download_id);
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
@@ -2031,13 +1951,7 @@ int download_get_http_header_field(int download_id,
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	if (_download_ipc_send_command
 		(g_download_ipc->cmd_socket, download_id, DP_CMD_GET_HTTP_HEADER)
@@ -2063,7 +1977,7 @@ int download_get_http_header_field(int download_id,
 	if (errorcode != DOWNLOAD_ERROR_NONE) {
 		TRACE_ERROR("[CHECK IO] (%d)", download_id);
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
@@ -2073,7 +1987,7 @@ int download_get_http_header_field(int download_id,
 	str = _ipc_read_string(g_download_ipc->cmd_socket);
 	if (str == NULL) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return DOWNLOAD_ERROR_IO_ERROR;
@@ -2111,13 +2025,7 @@ int download_remove_http_header_field(int download_id,
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	// send commnad with ID
 	if (_download_ipc_send_command
@@ -2143,7 +2051,7 @@ int download_remove_http_header_field(int download_id,
 	if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
 		TRACE_ERROR("[CHECK IO] (%d)", download_id);
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
@@ -2179,13 +2087,8 @@ int download_set_state_changed_cb(int download_id,
 	// turn on state_cb flag of provider
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
+
 	// send create command.
 	if (_download_ipc_send_command(g_download_ipc->cmd_socket,
 		download_id, DP_CMD_SET_STATE_CALLBACK)
@@ -2258,13 +2161,7 @@ int download_unset_state_changed_cb(int download_id)
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	index = _get_my_slot_index(download_id);
 	if (index >= 0) {
@@ -2296,7 +2193,7 @@ int download_unset_state_changed_cb(int download_id)
 	if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
 		TRACE_ERROR("[CHECK IO] (%d)", download_id);
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
@@ -2330,13 +2227,7 @@ int download_set_progress_cb(int download_id,
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	// turn on progress_cb flag of provider
 	// send create command.
@@ -2365,7 +2256,7 @@ int download_set_progress_cb(int download_id,
 	if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
 		TRACE_ERROR("[CHECK IO] (%d)", download_id);
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		download_unset_progress_cb(download_id);
@@ -2412,13 +2303,7 @@ int download_unset_progress_cb(int download_id)
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	index = _get_my_slot_index(download_id);
 	if (index >= 0) {
@@ -2450,7 +2335,7 @@ int download_unset_progress_cb(int download_id)
 	if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
 		TRACE_ERROR("[CHECK IO] (%d)", download_id);
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
@@ -2480,19 +2365,15 @@ int download_get_state(int download_id, download_state_e *state)
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	errorcode = _send_simple_cmd(download_id, DP_CMD_GET_STATE);
 	if (errorcode != DOWNLOAD_ERROR_NONE) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errorcode == DOWNLOAD_ERROR_IO_ERROR && errno != EAGAIN)
-			_disconnect_from_provider();
+		if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
+			if (errno != EAGAIN && errno != EINTR)
+				_disconnect_from_provider();
+		}
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
 	}
@@ -2500,7 +2381,7 @@ int download_get_state(int download_id, download_state_e *state)
 	if (_ipc_read_custom_type(g_download_ipc->cmd_socket,
 							&dp_state, sizeof(dp_state_type)) < 0) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return DOWNLOAD_ERROR_IO_ERROR;
@@ -2534,20 +2415,16 @@ int download_get_temp_path(int download_id, char **temp_path)
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	errorcode =
 		_send_simple_cmd(download_id, DP_CMD_GET_TEMP_SAVED_PATH);
 	if (errorcode != DOWNLOAD_ERROR_NONE) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errorcode == DOWNLOAD_ERROR_IO_ERROR && errno != EAGAIN)
-			_disconnect_from_provider();
+		if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
+			if (errno != EAGAIN && errno != EINTR)
+				_disconnect_from_provider();
+		}
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
 	}
@@ -2555,7 +2432,7 @@ int download_get_temp_path(int download_id, char **temp_path)
 	value = _ipc_read_string(g_download_ipc->cmd_socket);
 	if (value == NULL) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return DOWNLOAD_ERROR_IO_ERROR;
@@ -2588,19 +2465,15 @@ int download_get_content_name(int download_id, char **content_name)
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	errorcode = _send_simple_cmd(download_id, DP_CMD_GET_CONTENT_NAME);
 	if (errorcode != DOWNLOAD_ERROR_NONE) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errorcode == DOWNLOAD_ERROR_IO_ERROR && errno != EAGAIN)
-			_disconnect_from_provider();
+		if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
+			if (errno != EAGAIN && errno != EINTR)
+				_disconnect_from_provider();
+		}
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
 	}
@@ -2608,7 +2481,7 @@ int download_get_content_name(int download_id, char **content_name)
 	value = _ipc_read_string(g_download_ipc->cmd_socket);
 	if (value == NULL) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return DOWNLOAD_ERROR_IO_ERROR;
@@ -2641,13 +2514,7 @@ int download_get_content_size(int download_id,
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	errorcode = _send_simple_cmd(download_id, DP_CMD_GET_TOTAL_FILE_SIZE);
 	if (errorcode != DOWNLOAD_ERROR_NONE) {
@@ -2663,7 +2530,7 @@ int download_get_content_size(int download_id,
 		content_size, sizeof(unsigned long long));
 	if (errorcode < 0) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
@@ -2694,19 +2561,15 @@ int download_get_mime_type(int download_id, char **mime_type)
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	errorcode = _send_simple_cmd(download_id, DP_CMD_GET_MIME_TYPE);
 	if (errorcode != DOWNLOAD_ERROR_NONE) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errorcode == DOWNLOAD_ERROR_IO_ERROR && errno != EAGAIN)
-			_disconnect_from_provider();
+		if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
+			if (errno != EAGAIN && errno != EINTR)
+				_disconnect_from_provider();
+		}
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
 	}
@@ -2714,7 +2577,7 @@ int download_get_mime_type(int download_id, char **mime_type)
 	value = _ipc_read_string(g_download_ipc->cmd_socket);
 	if (value == NULL) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return DOWNLOAD_ERROR_IO_ERROR;
@@ -2746,13 +2609,7 @@ int download_set_auto_download(int download_id, bool enable)
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	if (_download_ipc_send_command(g_download_ipc->cmd_socket,
 		download_id, DP_CMD_SET_AUTO_DOWNLOAD)
@@ -2776,7 +2633,7 @@ int download_set_auto_download(int download_id, bool enable)
 	if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
 		TRACE_ERROR("[CHECK IO] (%d)", download_id);
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
@@ -2806,19 +2663,15 @@ int download_get_auto_download(int download_id, bool *enable)
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	errorcode = _send_simple_cmd(download_id, DP_CMD_GET_AUTO_DOWNLOAD);
 	if (errorcode != DOWNLOAD_ERROR_NONE) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errorcode == DOWNLOAD_ERROR_IO_ERROR && errno != EAGAIN)
-			_disconnect_from_provider();
+		if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
+			if (errno != EAGAIN && errno != EINTR)
+				_disconnect_from_provider();
+		}
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
 	}
@@ -2826,7 +2679,7 @@ int download_get_auto_download(int download_id, bool *enable)
 	value = _download_ipc_read_int(g_download_ipc->cmd_socket);
 	if (value < 0) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return DOWNLOAD_ERROR_IO_ERROR;
@@ -2857,19 +2710,15 @@ int download_get_error(int download_id, download_error_e *error)
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	errorcode = _send_simple_cmd(download_id, DP_CMD_GET_ERROR);
 	if (errorcode != DOWNLOAD_ERROR_NONE) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errorcode == DOWNLOAD_ERROR_IO_ERROR && errno != EAGAIN)
-			_disconnect_from_provider();
+		if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
+			if (errno != EAGAIN && errno != EINTR)
+				_disconnect_from_provider();
+		}
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
 	}
@@ -2879,7 +2728,7 @@ int download_get_error(int download_id, download_error_e *error)
 	if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
 		TRACE_ERROR("[CHECK IO] (%d)", download_id);
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
@@ -2911,19 +2760,15 @@ int download_get_http_status(int download_id, int *http_status)
 
 	pthread_mutex_lock((&g_download_ipc->mutex));
 
-#ifdef DOWNLOAD_ECHO_SUPPORT
-	if (_check_ipc_status(g_download_ipc->cmd_socket) < 0) {
-		pthread_mutex_unlock((&g_download_ipc->mutex));
-		pthread_mutex_unlock(&g_download_mutex);
-		return DOWNLOAD_ERROR_IO_ERROR;
-	}
-#endif
+	DP_CHECK_PROVIDER_STATUS;
 
 	errorcode = _send_simple_cmd(download_id, DP_CMD_GET_HTTP_STATUS);
 	if (errorcode != DOWNLOAD_ERROR_NONE) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errorcode == DOWNLOAD_ERROR_IO_ERROR && errno != EAGAIN)
-			_disconnect_from_provider();
+		if (errorcode == DOWNLOAD_ERROR_IO_ERROR) {
+			if (errno != EAGAIN && errno != EINTR)
+				_disconnect_from_provider();
+		}
 		pthread_mutex_unlock(&g_download_mutex);
 		return errorcode;
 	}
@@ -2931,7 +2776,7 @@ int download_get_http_status(int download_id, int *http_status)
 	status = _download_ipc_read_int(g_download_ipc->cmd_socket);
 	if (status < 0) {
 		pthread_mutex_unlock((&g_download_ipc->mutex));
-		if (errno != EAGAIN)
+		if (errno != EAGAIN && errno != EINTR)
 			_disconnect_from_provider();
 		pthread_mutex_unlock(&g_download_mutex);
 		return DOWNLOAD_ERROR_IO_ERROR;

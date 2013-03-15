@@ -1,18 +1,15 @@
 
 Name:	capi-web-url-download
 Summary:	CAPI for content download with web url
-Version:	1.0.1
-Release:	6
+Version:	1.0.2
+Release:	3
 Group:		Development/Libraries
 License:	Apache License, Version 2.0
 URL:		N/A
 Source0:	%{name}-%{version}.tar.gz
 BuildRequires: pkgconfig(capi-base-common)
 BuildRequires: pkgconfig(dlog)
-BuildRequires: pkgconfig(capi-appfw-app-manager)
-BuildRequires: pkgconfig(capi-appfw-application)
-BuildRequires: pkgconfig(download-provider)
-BuildRequires: pkgconfig(dbus-1)
+BuildRequires: pkgconfig(download-provider-interface)
 BuildRequires: cmake
 
 %description
@@ -56,6 +53,17 @@ mkdir -p %{buildroot}/usr/share/license
 %{_includedir}/web/download.h
 
 %changelog
+* Tue Mar 05 2013 Jungki Kwak <jungki.kwak@samsung.com>
+- Changes APIs for notification extra list
+- Use download-provider-interface library
+
+* Sat Feb 23 2013 Kwangmin Bang <justine.bang@samsung.com>
+- do not close the socket in Interrupted System Call
+
+* Mon Feb 18 2013 Kwangmin Bang <justine.bang@samsung.com>
+- use invalid pointer
+- return wrong state in _download_change_dp_state()
+
 * Thu Jan 31 2013 Kwangmin Bang <justine.bang@samsung.com>
 - support new state of provider
 

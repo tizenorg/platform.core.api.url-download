@@ -18,8 +18,6 @@
 #define __TIZEN_WEB_DOWNLOAD_H__
 
 #include <tizen.h>
-#include <app.h>
-
 
 #ifdef __cplusplus
 extern "C"
@@ -351,31 +349,46 @@ int download_get_notification(int download_id, bool *enable);
  *
  * @param[in] download The download id
  * @param[in] key The character pointer type. The extra param has a pair of key and value
- * @param[in] value The character pointer type. The extra param has a pair of key and value
+ * @param[in] values The character pointer array type. The extra param has a pair of key and value array
+ * @param[in] length The length of value array
  * @return 0 on success, otherwise a negative error value.
  * @retval #DOWNLOAD_ERROR_NONE Successful
  * @retval #DOWNLOAD_ERROR_INVALID_PARAMETER Invalid parameter
  * @retval #DOWNLOAD_ERROR_ID_NOT_FOUND No Download ID
  * @see download_get_notification_extra_param()
- * @see download_service_get_extra_data()
- * @see service_get_operation()
+ * @see download_remove_notification_extra_param()
  */
-int download_set_notification_extra_param(int download_id, char *key, char *value);
+int download_add_notification_extra_param(int download_id, const char *key, const char **values, const unsigned int length);
 
+/**
+ * @brief Remove the extra param data which pass by application service data when notification message is clicked
+ *
+ * @remarks This function should be called before downloading (See download_start())
+ *
+ * @param[in] download The download id
+ * @param[in] key The character pointer type. The extra param has a pair of key and value
+ * @return 0 on success, otherwise a negative error value.
+ * @retval #DOWNLOAD_ERROR_NONE Successful
+ * @retval #DOWNLOAD_ERROR_INVALID_PARAMETER Invalid parameter
+ * @retval #DOWNLOAD_ERROR_ID_NOT_FOUND No Download ID
+ * @see download_add_notification_extra_param()
+ * @see download_get_notification_extra_param()
+ */
+int download_remove_notification_extra_param(int download_id, const char *key);
 
 /**
  * @brief Gets the extra param value to set by download_set_notification_extra_param
  * @param[in] download The download id
  * @param[out] key The character pointer type. The extra param has a pair of key and value
- * @param[out] value param The character pointer type. The extra param has a pair of key and value
+ * @param[out] values param The character pointer array type. The extra param has a pair of key and value array
+ * @param[out] length The length of value array
  * @return 0 on success, otherwise a negative error value.
  * @retval #DOWNLOAD_ERROR_NONE Successful
  * @retval #DOWNLOAD_ERROR_INVALID_PARAMETER Invalid parameter
  * @retval #DOWNLOAD_ERROR_ID_NOT_FOUND No Download ID
  * @see download_set_notification_extra_param()
  */
-int download_get_notification_extra_param(int download_id, char **key, char **value);
-
+int download_get_notification_extra_param(int download_id, const char *key, char ***values, unsigned int *length);
 
 /**
  * @brief Gets the absolute path to save the downloaded file

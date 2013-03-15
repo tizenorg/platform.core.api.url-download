@@ -12,7 +12,7 @@ SET(VERSION "${VERSION_MAJOR}.1.0")
 SET(INC_DIR include)
 INCLUDE_DIRECTORIES(${INC_DIR})
 
-SET(requires "dlog capi-base-common capi-appfw-app-manager capi-appfw-application download-provider dbus-1")
+SET(requires "dlog capi-base-common download-provider-interface")
 MESSAGE(STATUS "PACKAGES : ${requires}")
 SET(pc_requires "capi-base-common capi-appfw-application")
 
@@ -35,7 +35,7 @@ ADD_DEFINITIONS(-DDP_SUPPORT_DBUS_ACTIVATION)
 
 SET(CMAKE_EXE_LINKER_FLAGS "-Wl,--as-needed -Wl,--rpath=/usr/lib")
 
-SET(SOURCES src/download.c)
+SET(SOURCES src/download-wrapping.c)
 MESSAGE(STATUS "SOURCES : ${SOURCES}")
 ADD_LIBRARY(${fw_name} SHARED ${SOURCES})
 
