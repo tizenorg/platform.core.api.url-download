@@ -510,6 +510,23 @@ int download_add_http_header_field(int download_id, const char *field, const cha
  */
 int download_get_http_header_field(int download_id, const char *field, char **value);
 
+/**
+ * @brief Gets all of the field added to the download request
+ *
+ * @remarks The @a value must be released with free() by you.
+ * @param [in] download The download id
+ * @param [out] the array of the HTTP header fields
+ * @param [out] the number of the HTTP header fields
+ * @return 0 on success, otherwise a negative error value.
+ * @retval #DOWNLOAD_ERROR_NONE Successful
+ * @retval #DOWNLOAD_ERROR_INVALID_PARAMETER Invalid parameter
+ * @retval #DOWNLOAD_ERROR_OUT_OF_MEMORY Out of memory
+ * @retval #DOWNLOAD_ERROR_INVALID_STATE Invalid state
+ * @retval #DOWNLOAD_ERROR_ID_NOT_FOUND No Download ID
+ * @see download_add_http_header_field()
+ * @see download_remove_http_header_field()
+ */
+int download_get_http_header_field_list(int download_id, char ***fields, int *length);
 
 /**
  * @brief Removes the given HTTP header field from the download

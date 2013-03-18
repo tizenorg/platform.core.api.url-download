@@ -196,6 +196,14 @@ int download_get_http_header_field(int download_id,
 		dp_interface_get_http_header_field(download_id, field, value);
 }
 
+int download_get_http_header_field_list(int download_id, char ***fields,
+	int *length)
+{
+	TRACE_INFO("");
+	return dp_interface_get_http_header_field_list(download_id, fields,
+		length);
+}
+
 int download_remove_http_header_field(int download_id,
 	const char *field)
 {
