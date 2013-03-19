@@ -2,7 +2,7 @@
 Name:	capi-web-url-download
 Summary:	CAPI for content download with web url
 Version:	1.0.2
-Release:	3
+Release:	4
 Group:		Development/Libraries
 License:	Apache License, Version 2.0
 URL:		N/A
@@ -53,6 +53,9 @@ mkdir -p %{buildroot}/usr/share/license
 %{_includedir}/web/download.h
 
 %changelog
+* Tue Mar 19 2013 Kwangmin Bang <justine.bang@samsung.com>
+- new API : download_get_http_header_field_list
+
 * Tue Mar 05 2013 Jungki Kwak <jungki.kwak@samsung.com>
 - Changes APIs for notification extra list
 - Use download-provider-interface library
