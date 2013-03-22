@@ -27,7 +27,7 @@ CAPI for content downloading with web url (developement files)
 %setup -q
 
 %build
-cmake . -DCMAKE_INSTALL_PREFIX="/"
+%cmake .
 
 make %{?jobs:-j%jobs}
 
