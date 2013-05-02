@@ -88,6 +88,7 @@ typedef enum
 {
 	DOWNLOAD_NETWORK_DATA_NETWORK, /**< Download is available through data network */
 	DOWNLOAD_NETWORK_WIFI, /**< Download is available through Wi-Fi */
+	DOWNLOAD_NETWORK_WIFI_DIRECT, /**< Download is available through WiFi-Direct */
 	DOWNLOAD_NETWORK_ALL /**< Download is available through either data network or Wi-Fi */
 } download_network_type_e ;
 
