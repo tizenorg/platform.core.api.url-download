@@ -1,0 +1,8 @@
+Change-Id: I3aafb8e0fa825146d27c3848b1a4cc9996071893
+Code-Review+2: Anas Nashif
+Verified+1: Rusty Lynch <rusty.lynch@intel.com>
+Submitted-by: Anas Nashif
+Submitted-at: Wed, 22 May 2013 09:35:34 -0700
+Reviewed-on: https://review.tizen.org/gerrit/3621
+Project: platform/core/api/url-download
+Branch: refs/heads/tizen
