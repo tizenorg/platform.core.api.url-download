@@ -1,0 +1,8 @@
+Change-Id: Iaad34a2c7481017a876cdd790e216ef1bc6409e4
+Code-Review+2: Ryan Ware <ware@linux.intel.com>
+Verified+1: Ryan Ware <ware@linux.intel.com>
+Submitted-by: Ryan Ware <ware@linux.intel.com>
+Submitted-at: Mon, 08 Jul 2013 10:08:15 -0700
+Reviewed-on: https://review.tizen.org/gerrit/4417
+Project: platform/core/api/url-download
+Branch: refs/heads/tizen
