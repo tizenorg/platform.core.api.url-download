@@ -93,6 +93,10 @@ int download_get_network_type(int download_id,
 {
 	TRACE_INFO("");
 
+	if (net_type == NULL) {
+		TRACE_ERROR("Parameter NULL Check");
+		return DOWNLOAD_ERROR_INVALID_PARAMETER;
+	}
 	int network_type = DOWNLOAD_ADAPTOR_NETWORK_ALL;
 	int ret = dp_interface_get_network_type(download_id, &network_type);
 	if (ret == DOWNLOAD_ADAPTOR_ERROR_NONE)
@@ -125,27 +129,20 @@ int download_get_file_name(int download_id, char **file_name)
 	return dp_interface_get_file_name(download_id, file_name);
 }
 
-int download_set_ongoing_notification(int download_id, bool enable)
-{
-	return download_set_notification(download_id, enable);
-}
-
 int download_set_notification(int download_id, bool enable)
 {
 	TRACE_INFO("");
 	return dp_interface_set_notification(download_id, (int)enable);
 }
 
-int download_get_ongoing_notification(int download_id, bool *enable)
-{
-	return download_get_notification(download_id, enable);
-}
-
 int download_get_notification(int download_id, bool *enable)
 {
 	int is_set = 0;
-
 	TRACE_INFO("");
+	if (enable == NULL) {
+		TRACE_ERROR("Parameter NULL Check");
+		return DOWNLOAD_ERROR_INVALID_PARAMETER;
+	}
 	int ret = dp_interface_get_notification(download_id, &is_set);
 	if (ret == DOWNLOAD_ADAPTOR_ERROR_NONE)
 		*enable = (bool)is_set;
@@ -244,8 +241,11 @@ int download_unset_progress_cb(int download_id)
 int download_get_state(int download_id, download_state_e *state)
 {
 	int statecode = 0;
-
 	TRACE_INFO("");
+	if (state == NULL) {
+		TRACE_ERROR("Parameter NULL Check");
+		return DOWNLOAD_ERROR_INVALID_PARAMETER;
+	}
 	int ret = dp_interface_get_state(download_id, &statecode);
 	if (ret == DOWNLOAD_ADAPTOR_ERROR_NONE)
 		*state = statecode;
@@ -286,8 +286,11 @@ int download_set_auto_download(int download_id, bool enable)
 int download_get_auto_download(int download_id, bool *enable)
 {
 	int is_set = 0;
-
 	TRACE_INFO("");
+	if (enable == NULL) {
+		TRACE_ERROR("Parameter NULL Check");
+		return DOWNLOAD_ERROR_INVALID_PARAMETER;
+	}
 	int ret = dp_interface_get_auto_download(download_id, &is_set);
 	if (ret == DOWNLOAD_ADAPTOR_ERROR_NONE)
 		*enable = (bool)is_set;
@@ -297,8 +300,11 @@ int download_get_auto_download(int download_id, bool *enable)
 int download_get_error(int download_id, download_error_e *error)
 {
 	int errorcode = 0;
-
 	TRACE_INFO("");
+	if (error == NULL) {
+		TRACE_ERROR("Parameter NULL Check");
+		return DOWNLOAD_ERROR_INVALID_PARAMETER;
+	}
 	int ret = dp_interface_get_error(download_id, &errorcode);
 	if (ret == DOWNLOAD_ADAPTOR_ERROR_NONE)
 		*error = errorcode;
@@ -309,5 +315,61 @@ int download_get_http_status(int download_id, int *http_status)
 {
 	TRACE_INFO("");
 	return dp_interface_get_http_status(download_id, http_status);
+}
+
+int download_set_notification_bundle(int download_id, download_notification_bundle_type_e type, bundle *b)
+{
+	TRACE_INFO("");
+	return dp_interface_set_notification_bundle(download_id, (int)type, b);
+}
+
+int download_get_notification_bundle(int download_id, download_notification_bundle_type_e type, bundle **b)
+{
+	TRACE_INFO("");
+	return dp_interface_get_notification_bundle(download_id, (int)type, b);
+}
+
+int download_set_notification_title(int download_id, const char *title)
+{
+	TRACE_INFO("");
+	return dp_interface_set_notification_title(download_id, title);
+}
+
+int download_get_notification_title(int download_id, char **title)
+{
+	TRACE_INFO("");
+	return dp_interface_get_notification_title(download_id, title);
+}
+
+int download_set_notification_description(int download_id, const char *description)
+{
+	TRACE_INFO("");
+	return dp_interface_set_notification_description(download_id, description);
+}
+
+int download_get_notification_description(int download_id, char **description)
+{
+	TRACE_INFO("");
+	return dp_interface_get_notification_description(download_id, description);
+}
+
+int download_set_notification_type(int download_id, download_notification_type_e type)
+{
+	TRACE_INFO("");
+	return dp_interface_set_notification_type(download_id, (int)type);
+}
+
+int download_get_notification_type(int download_id, download_notification_type_e *type)
+{
+	int noti_type = 0;
+	TRACE_INFO("");
+	if (type == NULL) {
+		TRACE_ERROR("Parameter NULL Check");
+		return DOWNLOAD_ERROR_INVALID_PARAMETER;
+	}
+	int ret = dp_interface_get_notification_type(download_id, &noti_type);
+	if (ret == DOWNLOAD_ADAPTOR_ERROR_NONE)
+		*type = (download_notification_type_e)noti_type;
+	return ret;
 }
 
