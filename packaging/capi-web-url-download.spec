@@ -1,15 +1,15 @@
 
 Name:	capi-web-url-download
 Summary:	CAPI for content download with web url
-Version:	1.0.2
-Release:	5
+Version:	1.1.1
+Release:	0
 Group:		Development/Libraries
 License:	Apache License, Version 2.0
 URL:		https://review.tizen.org/git/?p=platform/core/api/url-download.git;a=summary
 Source0:	%{name}-%{version}.tar.gz
-Source1001: 	capi-web-url-download.manifest
 BuildRequires: pkgconfig(capi-base-common)
 BuildRequires: pkgconfig(dlog)
+BuildRequires: pkgconfig(bundle)
 BuildRequires: pkgconfig(download-provider-interface)
 BuildRequires: cmake
 
@@ -26,9 +26,13 @@ CAPI for content downloading with web url (development files)
 
 %prep
 %setup -q
-cp %{SOURCE1001} .
 
 %build
+%if 0%{?tizen_build_binary_release_type_eng}
+export CFLAGS="$CFLAGS -DTIZEN_ENGINEER_MODE"
+export CXXFLAGS="$CXXFLAGS -DTIZEN_ENGINEER_MODE"
+export FFLAGS="$FFLAGS -DTIZEN_ENGINEER_MODE"
+%endif
 %cmake .
 
 make %{?jobs:-j%jobs}
@@ -43,15 +47,17 @@ mkdir -p %{buildroot}/usr/share/license
 %postun -p /sbin/ldconfig
 
 %files
-%manifest %{name}.manifest
 %defattr(-,root,root,-)
+%manifest capi-web-url-download.manifest
 %{_libdir}/libcapi-web-url-download.so.*
 /usr/share/license/%{name}
 
 %files devel
-%manifest %{name}.manifest
 %defattr(-,root,root,-)
 %manifest capi-web-url-download.manifest
 %{_libdir}/libcapi-web-url-download.so
 %{_libdir}/pkgconfig/capi-web-url-download.pc
 %{_includedir}/web/download.h
+%{_includedir}/web/download_doc.h
+
+%changelog
