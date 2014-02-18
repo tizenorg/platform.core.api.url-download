@@ -18,6 +18,11 @@
 #define __TIZEN_WEB_DOWNLOAD_H__
 
 #include <tizen.h>
+#include <bundle.h>
+
+#ifndef DEPRECATED
+	#define DEPRECATED __attribute__((deprecated))
+#endif
 
 #ifdef __cplusplus
 extern "C"
@@ -28,11 +33,6 @@ extern "C"
  * @addtogroup CAPI_WEB_DOWNLOAD_MODULE
  * @{
  */
-
-/**
- * @brief Name for download service operation. Download Manager application is launched.
- */
-#define SERVICE_OPERATION_DOWNLOAD "http://tizen.org/appcontrol/operation/download"
 
 /**
  * @brief Enumeration of error code for URL download
@@ -46,6 +46,7 @@ typedef enum
 	DOWNLOAD_ERROR_CONNECTION_TIMED_OUT = TIZEN_ERROR_CONNECTION_TIME_OUT, /**< Http session time-out */
 	DOWNLOAD_ERROR_NO_SPACE = TIZEN_ERROR_FILE_NO_SPACE_ON_DEVICE, /**< No space left on device */
 	DOWNLOAD_ERROR_FIELD_NOT_FOUND = TIZEN_ERROR_KEY_NOT_AVAILABLE, /**< Specified field not found */
+	DOWNLOAD_ERROR_PERMISSION_DENIED = TIZEN_ERROR_PERMISSION_DENIED, /**< Permission denied */
 	DOWNLOAD_ERROR_INVALID_STATE = TIZEN_ERROR_WEB_CLASS | 0x21, /**< Invalid state */
 	DOWNLOAD_ERROR_CONNECTION_FAILED = TIZEN_ERROR_WEB_CLASS | 0x22, /**< Connection failed */
 	DOWNLOAD_ERROR_INVALID_URL = TIZEN_ERROR_WEB_CLASS | 0x24, /**< Invalid URL */
@@ -87,10 +88,36 @@ typedef enum
 typedef enum
 {
 	DOWNLOAD_NETWORK_DATA_NETWORK, /**< Download is available through data network */
-	DOWNLOAD_NETWORK_WIFI, /**< Download is available through Wi-Fi */
+	DOWNLOAD_NETWORK_WIFI, /**< Download is available through WiFi */
 	DOWNLOAD_NETWORK_WIFI_DIRECT, /**< Download is available through WiFi-Direct */
-	DOWNLOAD_NETWORK_ALL /**< Download is available through either data network or Wi-Fi */
+	DOWNLOAD_NETWORK_ALL /**< Download is available through either data network or WiFi */
 } download_network_type_e ;
+
+
+/**
+ * @brief Enumerations of notification type when client want to register
+ * @see #download_set_notification_type()
+ * @see #download_get_notification_type()
+ */
+typedef enum
+{
+	DOWNLOAD_NOTIFICATION_TYPE_NONE = 0, /**< Do not register notification */
+	DOWNLOAD_NOTIFICATION_TYPE_COMPLETE_ONLY, /**< For success state and failed state */
+	DOWNLOAD_NOTIFICATION_TYPE_ALL /**< For ongoing state, success state and failed state */
+} download_notification_type_e;
+
+
+/**
+ * @brief Enumerations of the type about notification bundle which client want to set when registering notification
+ * @see #download_set_notification_bundle()
+ * @see #download_get_notification_bundle()
+ */
+typedef enum
+{
+	DOWNLOAD_NOTIFICATION_BUNDLE_TYPE_ONGOING = 0, /**< For bundle for failed and ongoing notification */
+	DOWNLOAD_NOTIFICATION_BUNDLE_TYPE_COMPLETE, /**< For bundle for completed notification */
+	DOWNLOAD_NOTIFICATION_BUNDLE_TYPE_FAILED /**< For bundle for failed notification*/
+} download_notification_bundle_type_e;
 
 
 /**
@@ -123,15 +150,14 @@ typedef void (*download_progress_cb) (int download_id, unsigned long long receiv
 /**
  * @brief Creates a download id.
  *
- * @remarks The @a download must be released with download_destroy() by you.\n
- * The g_type_init() should be called when creating a main loop by user side. \n
- * Because the libsoup, which is http stack library of download module, use gobject internally.
+ * @remarks The @a download is released with download_destroy() by client.\n
  * @param [out] download A download id to be newly created on success
  * @return 0 on success, otherwise a negative error value.
  * @retval #DOWNLOAD_ERROR_NONE Successful
  * @retval #DOWNLOAD_ERROR_INVALID_PARAMETER Invalid parameter
  * @retval #DOWNLOAD_ERROR_OUT_OF_MEMORY Out of memory
  * @retval #DOWNLOAD_ERROR_IO_ERROR Internal I/O error
+ * @retval #DOWNLOAD_ERROR_QUEUE_FULL Full of queue from download server
  * @post The download state will be #DOWNLOAD_STATE_READY
  * @see download_destroy()
  */
@@ -210,7 +236,7 @@ int download_set_network_type(int download_id, download_network_type_e net_type)
 
 
 /**
- * @brief Gets the netowork type for the downloaded file
+ * @brief Gets the network type for the downloaded file
  *
  * @param [in] download The download id
  * @param [out] net_type The network type which is defined by client. 
@@ -288,7 +314,7 @@ int download_set_file_name(int download_id, const char *file_name);
 /**
  * @brief Gets the name which is set by user.
  *
- * @details If user do not set any name, it retruns NULL.
+ * @details If user do not set any name, it returns NULL.
  *
  * @remarks The @a file_name must be released with free() by you.
  * @param [in] download The download id
@@ -305,12 +331,12 @@ int download_get_file_name(int download_id, char **file_name);
 
 /**
  * @brief Sets the option value to register notification messages by download service module.
- * @details The tree types of notification message can be posted. Those are completion, failed and ongoing type.
+ * @details The three types of notification message can be posted. Those are completion, failed and ongoing type.
  * When the notification message of failed and ongoing types from the notification tray, \n
  * the client application which call this API will be launched. \n
  *
  * @remarks The extra param should be set together (See download_set_notification_extra_param()). \n
- * The downloading and failed notification can be registerd only if the extra param for noticiation message is set. \n
+ * The downloading and failed notification can be registered only if the extra param for notification message is set. \n
  * If it is not, the client application can not know who request to launch itself. \n
  * It should be necessary to understand the action operation of notification click event.
  * @remarks If the competition notification message is selected from the notification tray,\n
@@ -326,24 +352,40 @@ int download_get_file_name(int download_id, char **file_name);
  * @pre The state must be #DOWNLOAD_STATE_READY, #DOWNLOAD_STATE_FAILED, #DOWNLOAD_STATE_CANCELED
  * @see download_get_notification()
  * @see service_get_operation()
+ * @deprecated This API can be replaced with download_set_notification_type()
+ @code
+ int ret = 0;
+ //ret = download_set_notification(id, true);
+ ret = download_set_notification_type(id, DOWNLOAD_NOTIFICATION_TYPE_ALL);
+ //ret = download_set_notification(id, false);
+ ret = download_set_notification_type(id, DOWNLOAD_NOTIFICATION_TYPE_NONE);
+ @endcode
  */
-int download_set_notification(int download_id, bool enable);
+DEPRECATED int download_set_notification(int download_id, bool enable);
 
 /**
  * @brief Gets the option value to register notification messages by download service module.
  * @param[in] download The download id
- * @param[out] enable The boolean type. The true or false value is retruned
+ * @param[out] enable The boolean type. The true or false value is returned
  * @return 0 on success, otherwise a negative error value.
  * @retval #DOWNLOAD_ERROR_NONE Successful
  * @retval #DOWNLOAD_ERROR_INVALID_PARAMETER Invalid parameter
  * @retval #DOWNLOAD_ERROR_ID_NOT_FOUND No Download ID
  * @see download_set_notification()
+ * @deprecated This API can be replaced with download_get_notification_type()
+ @code
+ int ret = 0;
+ bool val = 0;
+ download_notification_type_e type;
+ //ret = download_get_notification(id, &val);
+ ret = download_get_notification_type(id, &type);
+ @endcode
  */
-int download_get_notification(int download_id, bool *enable);
+DEPRECATED int download_get_notification(int download_id, bool *enable);
 
 /**
  * @brief Sets the extra param data which pass by application service data when notification message is clicked
- * @details When client set the extra param data for ongoing notificaiton action, \n
+ * @details When client set the extra param data for ongoing notification action, \n
  * it can get the data through service_get_extra_data() when client application is launched by notification action.
  *
  * @remarks This function should be called before downloading (See download_start())
@@ -358,8 +400,21 @@ int download_get_notification(int download_id, bool *enable);
  * @retval #DOWNLOAD_ERROR_ID_NOT_FOUND No Download ID
  * @see download_get_notification_extra_param()
  * @see download_remove_notification_extra_param()
+ * @deprecated This API can be replaced with download_set_notification_bundle()
+ @code
+ #include <bundle.h>
+ int ret = 0;
+ // char *value[1] = ("12345",};
+ //ret = download_add_notification_extra_param(id, "specific_id", value[0], 1);
+ bundle *b = bundle_create();
+ char buff[MAX_BUF_LEN] = {0,};
+ appsvc_set_pkgname(b, "com.samsung.test-app");
+ appsvc_add_data(b, "specific_id", "12345");
+ ret = download_set_notification_bundle(id, DOWNLOAD_NOTIFICATION_BUNDLE_TYPE_ALL, b);
+ bundle_free(b);
+ @endcode
  */
-int download_add_notification_extra_param(int download_id, const char *key, const char **values, const unsigned int length);
+DEPRECATED int download_add_notification_extra_param(int download_id, const char *key, const char **values, const unsigned int length);
 
 /**
  * @brief Remove the extra param data which pass by application service data when notification message is clicked
@@ -375,7 +430,7 @@ int download_add_notification_extra_param(int download_id, const char *key, cons
  * @see download_add_notification_extra_param()
  * @see download_get_notification_extra_param()
  */
-int download_remove_notification_extra_param(int download_id, const char *key);
+DEPRECATED int download_remove_notification_extra_param(int download_id, const char *key);
 
 /**
  * @brief Gets the extra param value to set by download_set_notification_extra_param
@@ -389,7 +444,7 @@ int download_remove_notification_extra_param(int download_id, const char *key);
  * @retval #DOWNLOAD_ERROR_ID_NOT_FOUND No Download ID
  * @see download_set_notification_extra_param()
  */
-int download_get_notification_extra_param(int download_id, const char *key, char ***values, unsigned int *length);
+DEPRECATED int download_get_notification_extra_param(int download_id, const char *key, char ***values, unsigned int *length);
 
 /**
  * @brief Gets the absolute path to save the downloaded file
@@ -438,14 +493,14 @@ int download_get_mime_type(int download_id, char **mime_type);
  *  If it is not, user do not receive the download result in case the client process is not alive.
  * @remarks The default value is false.
  * @param[in] download The download id
- * @param[in] enable The boolean value for auto download which is defined by clinet. 
+ * @param[in] enable The boolean value for auto download which is defined by client.
  * @return 0 on success, otherwise a negative error value.
  * @retval #DOWNLOAD_ERROR_NONE Successful
  * @retval #DOWNLOAD_ERROR_INVALID_PARAMETER Invalid parameter
  * @retval #DOWNLOAD_ERROR_ID_NOT_FOUND No Download ID
  * @pre The state must be #DOWNLOAD_STATE_READY, #DOWNLOAD_STATE_FAILED, #DOWNLOAD_STATE_CANCELED
  * @see download_get_auto_download()
- * @see download_set_ongoing_notification()
+ * @see download_set_notification()
  * @see download_set_notification_extra_param()
  *
  */
@@ -456,7 +511,7 @@ int download_set_auto_download(int download_id, bool enable);
  * @brief Gets the value of option for auto download.
  *
  * @param [in] download The download id
- * @param [out] enable The boolean value for auto download which is defined by clinet. 
+ * @param [out] enable The boolean value for auto download which is defined by client.
  * @return 0 on success, otherwise a negative error value.
  * @retval #DOWNLOAD_ERROR_NONE Successful
  * @retval #DOWNLOAD_ERROR_INVALID_PARAMETER Invalid parameter
@@ -637,6 +692,7 @@ int download_unset_progress_cb(int download_id);
  * @retval #DOWNLOAD_ERROR_URL Invalid URL
  * @retval #DOWNLOAD_ERROR_DESTINATION Invalid destination
  * @retval #DOWNLOAD_ERROR_ID_NOT_FOUND No Download ID
+ * @retval #DOWNLOAD_ERROR_QUEUE_FULL Full of queue from download server
  * @pre The download state must be #DOWNLOAD_STATE_READY, #DOWNLOAD_STATE_PAUSED, #DOWNLOAD_STATE_CANCELED, #DOWNLOAD_STATE_FAILED.
  * @post The download state will be #DOWNLOAD_STATE_QUEUED or #DOWNLOAD_STATE_DOWNLOADING
  * @see download_set_url()
@@ -670,7 +726,7 @@ int download_pause(int download_id);
  * @brief Cancel the download, asynchronously.
  *
  * @details This function cancels the running download and its state will be #DOWNLOAD_STATE_READY
- * @remarks The cancelled download can be restarted with download_start().
+ * @remarks The canceled download can be restarted with download_start().
  * @param [in] download The download id
  * @return 0 on success, otherwise a negative error value.
  * @retval #DOWNLOAD_ERROR_NONE Successful
@@ -720,7 +776,7 @@ int download_get_temp_path(int download_id, char **temp_path);
 /**
  * @brief Gets the content name for downloading a file.
  *
- * @details This can be defined with referense of HTTP response header data.
+ * @details This can be defined with reference of HTTP response header data.
  * The content name can be received when HTTP response header is received.
  *
  * @param [in] download The download id
@@ -790,6 +846,151 @@ int download_get_error(int download_id, download_error_e *error);
  * @see download_start()
  */
 int download_get_http_status(int download_id, int *http_status);
+
+/**
+ * @brief Sets bundle data to register notification messages.
+ * @details The three types of notification message can be posted. Those are completion, failed and ongoing type.
+ *
+ * @remarks When the notification message is clicked, the action is decided by bundle data. \n
+ * If the bundle data is not set, the following default operation is executed when the notification message is clicked. \n
+ * 1) Download completed state : The viewer application is executed according to extension name of downloaded content. \n
+ * 2) Download failed state and ongoing state : The client application is executed. \n
+ * @remarks This function should be called before starting download.
+ * @remarks The bundle data MUST BE FREED by client when it is not used any more.
+ * @param[in] download The download id
+ * @param[in] type The enumeration type. See #download_notification_bundle_type_e.
+ * @param[in] bundle The bundle pointer value.
+ * @return 0 on success, otherwise a negative error value.
+ * @retval #DOWNLOAD_ERROR_NONE Successful
+ * @retval #DOWNLOAD_ERROR_INVALID_PARAMETER Invalid parameter
+ * @retval #DOWNLOAD_ERROR_ID_NOT_FOUND No Download ID
+ * @pre The state must be #DOWNLOAD_STATE_READY, #DOWNLOAD_STATE_FAILED, #DOWNLOAD_STATE_CANCELED
+ * @see download_set_notification_type()
+ * @see download_get_notification_bundle()
+ */
+int download_set_notification_bundle(int download_id, download_notification_bundle_type_e type, bundle *b);
+
+/**
+ * @brief Get the bundle data to register notification messages which is set in download_set_notification_bundle().
+ *
+ * @details When the notification message is clicked, the action is decided by bundle data. \n
+ * @param[in] download The download id
+ * @param[in] type The enumeration type. See #download_notification_bundle_type_e.
+ * @param[out] bundle The bundle pointer value.
+ * @remarks The bundle data MUST BE FREED by client when it is not used any more.
+ * @return 0 on success, otherwise a negative error value.
+ * @retval #DOWNLOAD_ERROR_NONE Successful
+ * @retval #DOWNLOAD_ERROR_INVALID_PARAMETER Invalid parameter
+ * @retval #DOWNLOAD_ERROR_ID_NOT_FOUND No Download ID
+ * @retval #DOWNLOAD_ERROR_NO_DATA the bundle have not been set
+ * @see download_set_notification_bundle()
+ */
+int download_get_notification_bundle(int download_id, download_notification_bundle_type_e type, bundle **b);
+
+/**
+ * @brief Set the title of notification.
+ *
+ * @details When registering notification, the title is displayed at title area of notification message
+ *
+ * @param [in] download The download id
+ * @param [in] title The title for displaying to user
+ * @return 0 on success, otherwise a negative error value.
+ * @retval #DOWNLOAD_ERROR_NONE Successful
+ * @retval #DOWNLOAD_ERROR_INVALID_PARAMETER Invalid parameter
+ * @retval #DOWNLOAD_ERROR_ID_NOT_FOUND No Download ID
+ * @pre If the notification option is not enable, this title is not shown to user
+ * @see #download_set_notification_type()
+ * @see #download_get_notification_title()
+  */
+int download_set_notification_title(int download_id, const char *title);
+
+/**
+ * @brief Gets the title of notification when set in #download_set_notification_title()
+ *
+ * @details When registering notification, the title is displayed at title area of notification message
+ *
+ * @param [in] download The download id
+ * @param [out] title The title for displaying to user
+ * @return 0 on success, otherwise a negative error value.
+ * @retval #DOWNLOAD_ERROR_NONE Successful
+ * @retval #DOWNLOAD_ERROR_INVALID_PARAMETER Invalid parameter
+ * @retval #DOWNLOAD_ERROR_ID_NOT_FOUND No Download ID
+ * @retval #DOWNLOAD_ERROR_NO_DATA the title have not been set
+ * @pre It can get the title value before calling this API.
+ * @see #download_set_notification_title()
+  */
+int download_get_notification_title(int download_id, char **title);
+
+/**
+ * @brief Set the description of notification.
+ *
+ * @details When registering notification, the description is displayed at description area of notification message
+ *
+ * @param [in] download The download id
+ * @param [in] description The description for displaying to user
+ * @return 0 on success, otherwise a negative error value.
+ * @retval #DOWNLOAD_ERROR_NONE Successful
+ * @retval #DOWNLOAD_ERROR_INVALID_PARAMETER Invalid parameter
+ * @retval #DOWNLOAD_ERROR_ID_NOT_FOUND No Download ID
+ * @pre If the notification option is not enable, this description is not shown to user
+ * @see #download_set_notification_type()
+ * @see #download_get_notification_description()
+  */
+int download_set_notification_description(int download_id, const char *description);
+
+/**
+ * @brief Gets the description of notification when set in #download_set_notification_description()
+ *
+ * @details When registering notification, the description is displayed at description area of notification message
+ *
+ * @param [in] download The download id
+ * @param [out] description The description for displaying to user
+ * @return 0 on success, otherwise a negative error value.
+ * @retval #DOWNLOAD_ERROR_NONE Successful
+ * @retval #DOWNLOAD_ERROR_INVALID_PARAMETER Invalid parameter
+ * @retval #DOWNLOAD_ERROR_ID_NOT_FOUND No Download ID
+ * @retval #DOWNLOAD_ERROR_NO_DATA the description have not been set
+ * @pre It can get the title value before calling this API.
+ * @see #download_set_notification_description()
+  */
+int download_get_notification_description(int download_id, char **description);
+
+/**
+ * @brief Sets the option value to register notification messages.
+ * @details The three types of notification message can be posted. Those are completion, failed and ongoing type.
+ *
+ * @remarks When the notification message is clicked, the action is decided by bundle data from download_set_notification_bundle(). \n
+ * If the bundle data is not set, the following default operation is executed when the notification message is clicked. \n
+ * 1) Download completed state : The viewer application is executed according to extension name of downloaded content. \n
+ * 2) Download failed state and ongoing state : The client application is executed. \n
+ * @remarks The default type is #DOWNLOAD_NOTIFICATION_TYPE_NONE.
+ * @remarks This function should be called before starting download.
+ * @param[in] download The download id
+ * @param[in] type The enumeration type. See #download_notification_type_e.
+ * @return 0 on success, otherwise a negative error value.
+ * @retval #DOWNLOAD_ERROR_NONE Successful
+ * @retval #DOWNLOAD_ERROR_INVALID_PARAMETER Invalid parameter
+ * @retval #DOWNLOAD_ERROR_ID_NOT_FOUND No Download ID
+ * @pre The state must be #DOWNLOAD_STATE_READY, #DOWNLOAD_STATE_FAILED, #DOWNLOAD_STATE_CANCELED
+ * @see download_set_notification_bundle()
+ * @see download_get_notification_type()
+ */
+int download_set_notification_type(int download_id, download_notification_type_e type);
+
+/**
+ * @brief Get the option value to register notification messages which is set in download_set_notification_type().
+ *
+ * @remarks When the notification message is clicked, the action is decided by bundle data from download_set_notification_bundle(). \n
+ * @remarks The default type is #DOWNLOAD_NOTIFICATION_TYPE_NONE.
+ * @param[in] download The download id
+ * @param[out] type The enumeration type. See #download_notification_type_e.
+ * @return 0 on success, otherwise a negative error value.
+ * @retval #DOWNLOAD_ERROR_NONE Successful
+ * @retval #DOWNLOAD_ERROR_INVALID_PARAMETER Invalid parameter
+ * @retval #DOWNLOAD_ERROR_ID_NOT_FOUND No Download ID
+ * @see download_set_notification_type()
+ */
+int download_get_notification_type(int download_id, download_notification_type_e *type);
 
 /**
  * @}
