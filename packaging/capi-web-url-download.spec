@@ -1,4 +1,3 @@
-
 Name:	capi-web-url-download
 Summary:	CAPI for content download with web url
 Version:	1.0.2
