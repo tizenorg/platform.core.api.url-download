@@ -4,7 +4,7 @@ Summary:	CAPI for content download with web url
 Version:	1.1.1
 Release:	0
 Group:		Development/Libraries
-License:	Apache License, Version 2.0
+License:	Apache-2.0
 URL:		https://review.tizen.org/git/?p=platform/core/api/url-download.git;a=summary
 Source0:	%{name}-%{version}.tar.gz
 BuildRequires: pkgconfig(capi-base-common)
@@ -14,7 +14,7 @@ BuildRequires: pkgconfig(download-provider-interface)
 BuildRequires: cmake
 
 %description
-CAPI for the content download
+Core APIs for the content download with web url
 
 %package devel
 Summary:	CAPI web url development files
