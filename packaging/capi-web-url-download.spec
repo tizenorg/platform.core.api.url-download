@@ -11,6 +11,7 @@ BuildRequires: pkgconfig(capi-base-common)
 BuildRequires: pkgconfig(dlog)
 BuildRequires: pkgconfig(capi-appfw-application)
 BuildRequires: pkgconfig(download-provider-interface)
+BuildRequires: pkgconfig(capi-system-info)
 BuildRequires: cmake
 
 %description

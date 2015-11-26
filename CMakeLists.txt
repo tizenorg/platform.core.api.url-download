@@ -13,7 +13,7 @@ SET(INC_DIR include)
 SET(DOC_DIR doc)
 INCLUDE_DIRECTORIES(${INC_DIR})
 
-SET(requires "dlog capi-base-common capi-appfw-application download-provider-interface")
+SET(requires "dlog capi-base-common capi-appfw-application download-provider-interface capi-system-info")
 MESSAGE(STATUS "PACKAGES : ${requires}")
 SET(pc_requires "capi-base-common capi-appfw-application")
 

@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <unistd.h>
+#include <system_info.h>
 
 #include <dlog.h>
 #include <download.h>
@@ -34,6 +35,10 @@ LOGI(format, ##ARG); \
 #else
 #define TRACE_DEBUG_MSG(format, ARG...) ;
 #endif
+
+#define TELEPHONY_FEATURE	"tizen.org/feature/network.telephony"
+#define WIFI_FEATURE		   	"tizen.org/feature/network.wifi"
+#define WIFI_DIRECT_FEATURE	"tizen.org/feature/network.wifi.direct"
 
 /////////////////////// APIs /////////////////////////////////
 
@@ -91,6 +96,44 @@ int download_set_network_type(int download_id,
 						download_network_type_e net_type)
 {
 	TRACE_INFO("");
+
+	int bValue = 0;
+	int bIsTelephonyFeatureSupported =0;
+	int bIsWifiFeatureSupported = 0;
+	int bIsWifiDirectFeatureSupported = 0;
+
+	bValue = system_info_get_platform_bool (TELEPHONY_FEATURE, &bIsTelephonyFeatureSupported);
+	bValue = system_info_get_platform_bool (WIFI_FEATURE, &bIsWifiFeatureSupported);
+	bValue = system_info_get_platform_bool (WIFI_DIRECT_FEATURE, &bIsWifiDirectFeatureSupported);
+
+	switch (net_type)
+	{
+		case DOWNLOAD_NETWORK_DATA_NETWORK:
+			if ( !bIsTelephonyFeatureSupported )
+			{
+				return DOWNLOAD_ERROR_NOT_SUPPORTED;
+			}
+			break;
+		case DOWNLOAD_NETWORK_WIFI:
+			if ( !bIsWifiFeatureSupported )
+			{
+				return DOWNLOAD_ERROR_NOT_SUPPORTED;
+			}
+			break;
+		case DOWNLOAD_NETWORK_WIFI_DIRECT:
+			if ( !bIsWifiDirectFeatureSupported )
+			{
+				return DOWNLOAD_ERROR_NOT_SUPPORTED;
+			}
+			break;
+		case DOWNLOAD_NETWORK_ALL:
+			if ( !bIsTelephonyFeatureSupported && !bIsWifiFeatureSupported && !bIsWifiDirectFeatureSupported )
+			{
+				return DOWNLOAD_ERROR_NOT_SUPPORTED;
+			}
+			break;
+	}
+	/////////////////////////
 	return dp_interface_set_network_type(download_id, (int)net_type);
 }
 
