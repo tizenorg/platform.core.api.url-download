@@ -97,14 +97,13 @@ int download_set_network_type(int download_id,
 {
 	TRACE_INFO("");
 
-	int bValue = 0;
-	int bIsTelephonyFeatureSupported =0;
+	int bIsTelephonyFeatureSupported = 0;
 	int bIsWifiFeatureSupported = 0;
 	int bIsWifiDirectFeatureSupported = 0;
 
-	bValue = system_info_get_platform_bool (TELEPHONY_FEATURE, &bIsTelephonyFeatureSupported);
-	bValue = system_info_get_platform_bool (WIFI_FEATURE, &bIsWifiFeatureSupported);
-	bValue = system_info_get_platform_bool (WIFI_DIRECT_FEATURE, &bIsWifiDirectFeatureSupported);
+	system_info_get_platform_bool (TELEPHONY_FEATURE, &bIsTelephonyFeatureSupported);
+	system_info_get_platform_bool (WIFI_FEATURE, &bIsWifiFeatureSupported);
+	system_info_get_platform_bool (WIFI_DIRECT_FEATURE, &bIsWifiDirectFeatureSupported);
 
 	switch (net_type)
 	{
@@ -133,7 +132,7 @@ int download_set_network_type(int download_id,
 			}
 			break;
 	}
-	/////////////////////////
+
 	return dp_interface_set_network_type(download_id, (int)net_type);
 }
 
