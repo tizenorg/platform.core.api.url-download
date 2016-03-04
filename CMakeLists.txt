@@ -13,7 +13,7 @@ SET(INC_DIR include)
 SET(DOC_DIR doc)
 INCLUDE_DIRECTORIES(${INC_DIR})
 
-SET(requires "dlog capi-base-common capi-appfw-application download-provider-interface capi-system-info")
+SET(requires "dlog capi-base-common capi-appfw-application download-provider-interface capi-system-info libtzplatform-config")
 MESSAGE(STATUS "PACKAGES : ${requires}")
 SET(pc_requires "capi-base-common capi-appfw-application")
 
@@ -64,8 +64,19 @@ CONFIGURE_FILE(
     ${fw_name}
     @ONLY
 )
-INSTALL(FILES ${CMAKE_CURRENT_SOURCE_DIR}/${fw_name}.pc DESTINATION ${LIB_INSTALL_DIR}/pkgconfig)
+CONFIGURE_FILE(
+    TC/_export_target_env.sh.in
+    TC/_export_target_env.sh
+    @ONLY
+)
+CONFIGURE_FILE(
+    TC/config.in
+    TC/config
+    @ONLY
+)
+
 INSTALL(FILES ${CMAKE_CURRENT_SOURCE_DIR}/${fw_name} DESTINATION share/license)
+INSTALL(FILES ${CMAKE_CURRENT_SOURCE_DIR}/${fw_name}.pc DESTINATION ${LIB_INSTALL_DIR}/pkgconfig)
 
 IF(UNIX)
 

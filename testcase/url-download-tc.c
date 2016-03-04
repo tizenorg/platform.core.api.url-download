@@ -9,6 +9,7 @@
 
 #include <download.h>
 #include <app_control.h>
+#include <tzplatform_config.h>
 
 #define TRACE_DEBUG_MSG(format, ARG...)  \
 { \
@@ -19,8 +20,6 @@ printf("[url-download][%s:%d] "format"\n", __FUNCTION__, __LINE__, ##ARG); \
 { \
 printf("[url-download][ERROR][%s:%d] "format"\n", __FUNCTION__, __LINE__, ##ARG); \
 }
-
-static char *g_tc_storage = "/opt/usr/media/.url-download-tc";
 
 static char *__print_state(int state)
 {
@@ -239,7 +238,7 @@ static int __download_start(char *url, int force)
 		if (errorcode != DOWNLOAD_ERROR_NONE) {
 			TRACE_ERROR_MSG("download:%d set_progress_cb error:%s", download_id, __print_errorcode(errorcode));
 		}
-		errorcode = download_set_destination(download_id, g_tc_storage);
+		errorcode = download_set_destination(download_id, tzplatform_mkpath(TZ_USER_CONTENT, ".url-download-tc"));
 		if (errorcode != DOWNLOAD_ERROR_NONE) {
 			TRACE_ERROR_MSG("download:%d set_destination error:%s", download_id, __print_errorcode(errorcode));
 		}

@@ -12,6 +12,7 @@ BuildRequires: pkgconfig(dlog)
 BuildRequires: pkgconfig(capi-appfw-application)
 BuildRequires: pkgconfig(download-provider-interface)
 BuildRequires: pkgconfig(capi-system-info)
+BuildRequires: pkgconfig(libtzplatform-config)
 BuildRequires: cmake
 
 %description
@@ -32,7 +33,8 @@ CAPI for content downloading with web url (developement files)
 export CFLAGS="$CFLAGS -DTIZEN_DEBUG_ENABLE"
 export CXXFLAGS="$CXXFLAGS -DTIZEN_DEBUG_ENABLE"
 export FFLAGS="$FFLAGS -DTIZEN_DEBUG_ENABLE"
-%cmake .
+%cmake . -DTZ_SYS_TEMP_MNT=%TZ_SYS_TEMP_MNT \
+         -DTZ_SYS_HOME=%TZ_SYS_HOME
 
 make %{?jobs:-j%jobs}
 

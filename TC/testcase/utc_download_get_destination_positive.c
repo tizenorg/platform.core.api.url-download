@@ -16,6 +16,7 @@
 
 #include <tet_api.h>
 #include <download.h>
+ #include <tzplatform_config.h>
 
 static void startup(void);
 static void cleanup(void);
@@ -44,7 +45,7 @@ void utc_download_get_destination_positive1(void)
 {
 	const char *TC_NAME = __FUNCTION__;
 	int retcode = 0;
-	char *input = "/opt/usr/media/Downloads";
+	char *input = tzplatform_getenv(TZ_USER_DOWNLOADS);
 	char *output = NULL;
 	int id = 0;
 

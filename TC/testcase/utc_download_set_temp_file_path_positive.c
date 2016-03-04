@@ -16,6 +16,7 @@
 
 #include <tet_api.h>
 #include <download.h>
+#include <tzplatform_config.h>
 
 static void startup(void);
 static void cleanup(void);
@@ -48,7 +49,7 @@ void utc_download_set_temp_file_path_positive1(void)
 
 	download_create(&id);
 	retcode = download_set_temp_file_path(id,
-		"/opt/usr/media/Downloads/.temp_download/abc.txt");
+        tzplatform_mkpath(TZ_USER_DOWNLOADS, ".temp_download/abc.txt"));
 	download_destroy(id);
 
 	if (retcode == DOWNLOAD_ERROR_NONE)

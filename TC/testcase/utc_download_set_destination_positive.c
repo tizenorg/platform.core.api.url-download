@@ -16,6 +16,7 @@
 
 #include <tet_api.h>
 #include <download.h>
+ #include <tzplatform_config.h>
 
 static void startup(void);
 static void cleanup(void);
@@ -47,7 +48,7 @@ void utc_download_set_destination_positive1(void)
 	int id = 0;
 
 	download_create(&id);
-	retcode = download_set_destination(id, "/opt/usr/media/Downloads");
+	retcode = download_set_destination(id, tzplatform_getenv(TZ_USER_DOWNLOADS));
 	download_destroy(id);
 
 	if (retcode == DOWNLOAD_ERROR_NONE)
