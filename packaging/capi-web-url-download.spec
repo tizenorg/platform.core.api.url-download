@@ -59,5 +59,4 @@ mkdir -p %{buildroot}/usr/share/license
 %{_includedir}/web/download.h
 %{_includedir}/web/download_product.h
 %{_includedir}/web/download_doc.h
-/usr/bin/url-download-tc
 
