@@ -1,10 +1,10 @@
 
 Name:	capi-web-url-download
 Summary:	CAPI for content download with web url
-Version:	1.2.6
+Version:	1.2.7
 Release:	0
 Group:		Development/Libraries
-License:	Apache License, Version 2.0
+License:	Apache-2.0
 URL:		N/A
 Source0:	%{name}-%{version}.tar.gz
 BuildRequires: pkgconfig(capi-base-common)
