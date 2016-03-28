@@ -42,8 +42,7 @@ extern "C"
  * @brief Enumeration for error codes of URL download.
  * @since_tizen 2.3
  */
-typedef enum
-{
+typedef enum {
     DOWNLOAD_ERROR_NONE = TIZEN_ERROR_NONE,                                 /**< Successful */
     DOWNLOAD_ERROR_INVALID_PARAMETER = TIZEN_ERROR_INVALID_PARAMETER,       /**< Invalid parameter */
     DOWNLOAD_ERROR_OUT_OF_MEMORY = TIZEN_ERROR_OUT_OF_MEMORY,               /**< Out of memory */
@@ -78,8 +77,7 @@ typedef enum
  * @brief Enumeration for download states.
  * @since_tizen 2.3
  */
-typedef enum
-{
+typedef enum {
     DOWNLOAD_STATE_NONE,         /**< Unhandled exception */
     DOWNLOAD_STATE_READY,        /**< Ready to download */
     DOWNLOAD_STATE_QUEUED,       /**< Queued to start downloading */
@@ -94,8 +92,7 @@ typedef enum
  * @brief Enumeration for network type for downloading.
  * @since_tizen 2.3
  */
-typedef enum
-{
+typedef enum {
     DOWNLOAD_NETWORK_DATA_NETWORK, /**< Download is available through data network */
     DOWNLOAD_NETWORK_WIFI,         /**< Download is available through WiFi */
     DOWNLOAD_NETWORK_WIFI_DIRECT,  /**< Download is available through WiFi-Direct */
@@ -110,8 +107,7 @@ typedef enum
  * @see download_set_notification_type()
  * @see download_get_notification_type()
  */
-typedef enum
-{
+typedef enum {
     DOWNLOAD_NOTIFICATION_TYPE_NONE = 0,       /**< Do not register notification */
     DOWNLOAD_NOTIFICATION_TYPE_COMPLETE_ONLY,  /**< Completion notification for success state and failed state */
     DOWNLOAD_NOTIFICATION_TYPE_ALL             /**< All download notifications for ongoing state, success state and failed state */
@@ -125,8 +121,7 @@ typedef enum
  * @see download_set_notification_app_control()
  * @see download_get_notification_app_control()
  */
-typedef enum
-{
+typedef enum {
     DOWNLOAD_NOTIFICATION_APP_CONTROL_TYPE_ONGOING = 0,  /**< App control action for failed and ongoing notification */
     DOWNLOAD_NOTIFICATION_APP_CONTROL_TYPE_COMPLETE,     /**< App control action for completed notification */
     DOWNLOAD_NOTIFICATION_APP_CONTROL_TYPE_FAILED        /**< App control action for failed notification*/

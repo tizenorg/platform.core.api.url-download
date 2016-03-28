@@ -105,33 +105,28 @@ int download_set_network_type(int download_id,
 	system_info_get_platform_bool (WIFI_FEATURE, &bIsWifiFeatureSupported);
 	system_info_get_platform_bool (WIFI_DIRECT_FEATURE, &bIsWifiDirectFeatureSupported);
 
-	switch (net_type)
-	{
-		case DOWNLOAD_NETWORK_DATA_NETWORK:
-			if ( !bIsTelephonyFeatureSupported )
-			{
-				return DOWNLOAD_ERROR_NOT_SUPPORTED;
-			}
-			break;
-		case DOWNLOAD_NETWORK_WIFI:
-			if ( !bIsWifiFeatureSupported )
-			{
-				return DOWNLOAD_ERROR_NOT_SUPPORTED;
-			}
-			break;
-		case DOWNLOAD_NETWORK_WIFI_DIRECT:
-			if ( !bIsWifiDirectFeatureSupported )
-			{
-				return DOWNLOAD_ERROR_NOT_SUPPORTED;
-			}
-			break;
-		case DOWNLOAD_NETWORK_ALL:
-			if ( !bIsTelephonyFeatureSupported && !bIsWifiFeatureSupported && !bIsWifiDirectFeatureSupported )
-			{
-				return DOWNLOAD_ERROR_NOT_SUPPORTED;
-			}
-			break;
-	}
+        switch (net_type) {
+            case DOWNLOAD_NETWORK_DATA_NETWORK:
+                if (!bIsTelephonyFeatureSupported) {
+                    return DOWNLOAD_ERROR_NOT_SUPPORTED;
+                }
+                break;
+            case DOWNLOAD_NETWORK_WIFI:
+                if (!bIsWifiFeatureSupported) {
+                    return DOWNLOAD_ERROR_NOT_SUPPORTED;
+                }
+            break;
+            case DOWNLOAD_NETWORK_WIFI_DIRECT:
+                if (!bIsWifiDirectFeatureSupported) {
+                    return DOWNLOAD_ERROR_NOT_SUPPORTED;
+                }
+            break;
+            case DOWNLOAD_NETWORK_ALL:
+                if (!bIsTelephonyFeatureSupported && !bIsWifiFeatureSupported && !bIsWifiDirectFeatureSupported) {
+                    return DOWNLOAD_ERROR_NOT_SUPPORTED;
+                }
+            break;
+        }
 
 	return dp_interface_set_network_type(download_id, (int)net_type);
 }
