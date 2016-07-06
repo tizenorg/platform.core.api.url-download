@@ -97,9 +97,9 @@ int download_set_network_type(int download_id,
 {
 	TRACE_INFO("");
 
-	int bIsTelephonyFeatureSupported = 0;
-	int bIsWifiFeatureSupported = 0;
-	int bIsWifiDirectFeatureSupported = 0;
+	bool bIsTelephonyFeatureSupported = 0;
+	bool bIsWifiFeatureSupported = 0;
+	bool bIsWifiDirectFeatureSupported = 0;
 
 	system_info_get_platform_bool (TELEPHONY_FEATURE, &bIsTelephonyFeatureSupported);
 	system_info_get_platform_bool (WIFI_FEATURE, &bIsWifiFeatureSupported);
@@ -379,7 +379,7 @@ int download_get_notification_app_control(int download_id, download_notification
 	TRACE_INFO("");
 	if (handle == NULL)
 		return DOWNLOAD_ERROR_INVALID_PARAMETER;
-	return dp_interface_get_notification_service_handle(download_id, (int)type, handle);
+	return dp_interface_get_notification_service_handle(download_id, (int)type, (void **)handle);
 }
 
 int download_set_notification_title(int download_id, const char *title)
