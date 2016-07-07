@@ -1,7 +1,7 @@
 
 Name:	capi-web-url-download
 Summary:	CAPI for content download with web url
-Version:	1.2.8
+Version:	1.2.7
 Release:	0
 Group:		Development/Libraries
 License:	Apache-2.0
